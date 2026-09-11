@@ -11,7 +11,7 @@ from typing import Sequence
 from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 
 from tmod.lmd import LmdDataset, Stop
-from tmod.lmd_baseline import _Dist
+from tmod.lmd_baseline import _Dist, hhmm, window
 from tmod.routing import RoutingProvider
 
 
@@ -24,6 +24,7 @@ class LmdScenario:
     stop_pool: str = "baseline"
     zone_penalty_min: int = 0
     time_limit_s: float = 5.0
+    use_windows: bool = False          # v1.1: enforce stop appt_window + truck shift as a time dimension
 
 
 def load_lmd_scenario(path: str | Path) -> LmdScenario:
@@ -79,7 +80,22 @@ def optimize_day(lmd: LmdDataset, stops: Sequence[Stop], providers: Sequence[Rou
         return service[mgr.IndexToNode(b)]
 
     rt.SetArcCostEvaluatorOfAllVehicles(rt.RegisterTransitCallback(cost_cb))
-    rt.AddDimension(rt.RegisterTransitCallback(duty_cb), 0, duty, True, "duty")
+    if sc.use_windows:
+        # time: cumul(j) = arrival at j. transit = service(i) + drive(i,j); slack = waiting. capacity = duty limit.
+        def time_cb(a, b):
+            i, j = mgr.IndexToNode(a), mgr.IndexToNode(b)
+            return service[i] + drive[i][j]
+
+        rt.AddDimension(rt.RegisterTransitCallback(time_cb), duty, duty, True, "time")
+        tdim = rt.GetDimensionOrDie("time")
+        start = hhmm(lmd.trucks[0].shift_start if lmd.trucks else None, 480)
+        for node in range(1, N):
+            w = window(stops[node - 1].window)
+            if w:
+                tdim.CumulVar(mgr.NodeToIndex(node)).SetRange(max(0, w[0] - start), max(0, w[1] - start))
+        tdim.SetSpanCostCoefficientForAllVehicles(1)   # discourage waiting
+    else:
+        rt.AddDimension(rt.RegisterTransitCallback(duty_cb), 0, duty, True, "duty")
     rt.AddDimension(rt.RegisterTransitCallback(work_cb), 0, work, True, "work")
     rt.SetFixedCostOfAllVehicles(1_000_000)  # ponytail: vehicle count dominates miles; tune if miles matter more
     for node in range(1, N):

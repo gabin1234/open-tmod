@@ -18,6 +18,22 @@ from tmod.routing import Route, RoutingProvider
 from tmod.validation import validate
 
 
+def hhmm(s: str | None, default: int) -> int:
+    """'08:00' -> 480 minutes. None/blank -> default."""
+    if not s or ":" not in s:
+        return default
+    h, m = s.strip().split(":")[:2]
+    return int(h) * 60 + int(m)
+
+
+def window(s: str | None) -> tuple[int, int] | None:
+    """'08:00-12:00' -> (480, 720). None if absent."""
+    if not s or "-" not in s:
+        return None
+    a, b = s.split("-", 1)
+    return hhmm(a, 0), hhmm(b, 24 * 60)
+
+
 @dataclass(frozen=True)
 class RoutePlan:
     load_id: str
@@ -33,6 +49,9 @@ class RoutePlan:
     duty_min: float
     over_work: bool
     over_duty: bool
+    late_stops: int = 0            # arrival after window end
+    wait_min: float = 0.0          # arrival before window start
+    start_min: int = 480           # shift start (minutes from midnight)
 
 
 @dataclass(frozen=True)
@@ -54,6 +73,8 @@ class RouteKPI:
     days: int
     max_trucks_per_day: int
     by_provider_miles: dict[str, float]
+    late_stops: int = 0
+    wait_min: float = 0.0
 
     def summary(self) -> str:
         prov = ", ".join(f"{k} {v:,.0f}mi" for k, v in self.by_provider_miles.items())
@@ -62,7 +83,7 @@ class RouteKPI:
                 f"miles {self.miles:,.0f} (hub legs {self.hub_miles:,.0f}, inter-stop {self.inter_stop_miles:,.0f}) [{prov}]\n"
                 f"drive {self.drive_min:,.0f} min, service {self.service_min:,} min, duty {self.duty_min:,.0f} min; "
                 f"avg stops/load {self.avg_stops_per_load:.2f}, avg duty/load {self.avg_duty_min:.0f} min; "
-                f"over_work {self.over_work}, over_duty {self.over_duty}")
+                f"over_work {self.over_work}, over_duty {self.over_duty}, late_stops {self.late_stops}, wait {self.wait_min:,.0f} min")
 
 
 @dataclass(frozen=True)
@@ -130,9 +151,22 @@ def evaluate_loads(lmd: LmdDataset, loads: dict[str, Sequence[Stop]], providers:
         miles = sum(l.miles for l in legs)
         drive = sum(l.minutes for l in legs)
         service = sum(s.service_min for s in order)
+        start = hhmm(truck.shift_start if truck else None, 480)
+        clock, late, wait = float(start), 0, 0.0
+        for s, leg in zip(order, legs):
+            clock += leg.minutes
+            w = window(s.window)
+            if w:
+                if clock < w[0]:
+                    wait += w[0] - clock
+                    clock = float(w[0])
+                if clock > w[1]:
+                    late += 1
+            clock += s.service_min
+        duty = drive + service + wait
         plans.append(RoutePlan(load_id, ok[0].appt_dt, truck_id, truck is None, order, legs, miles,
-                               legs[0].miles + legs[-1].miles, drive, service, drive + service,
-                               service > work_lim, drive + service > duty_lim))
+                               legs[0].miles + legs[-1].miles, drive, service, duty,
+                               service > work_lim, duty > duty_lim, late, wait, start))
     return BaselineRoutes(tuple(plans), _kpi(plans), tuple(skipped))
 
 
@@ -153,7 +187,8 @@ def _kpi(plans: Sequence[RoutePlan]) -> RouteKPI:
                     sum(p.drive_min for p in plans), sum(p.service_min for p in plans), duty,
                     sum(p.over_work for p in plans), sum(p.over_duty for p in plans), sum(p.pool for p in plans),
                     stops / n if n else 0.0, duty / n if n else 0.0, len(per_day),
-                    max((len(v) for v in per_day.values()), default=0), by_prov)
+                    max((len(v) for v in per_day.values()), default=0), by_prov,
+                    sum(p.late_stops for p in plans), sum(p.wait_min for p in plans))
 
 
 def baseline(lmd: LmdDataset, providers: Sequence[RoutingProvider]) -> BaselineRoutes:

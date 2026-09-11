@@ -58,6 +58,17 @@ def test_keep_order():
     assert [s.id for s in res.plans[0].stops] == ["S1", "S2"] and res.plans[0].miles == 10 + 9 + 1
 
 
+def test_windows_late_and_wait():
+    from dataclasses import replace
+    s1 = replace(stop(1, 10, 0, service=30), window="08:00-08:10")   # arrival 08:20 (10 mi * 2 min) -> late
+    s2 = replace(stop(2, 1, 0, service=30), window="13:00-14:00")    # arrival before 13:00 -> wait
+    res = evaluate_loads(_lmd([s1, s2]), {"L1": (s1, s2)}, [Manhattan()], keep_order=True)
+    p = res.plans[0]
+    assert p.late_stops == 1 and p.wait_min > 0 and p.duty_min == p.drive_min + p.service_min + p.wait_min
+    assert res.kpi.late_stops == 1 and res.kpi.wait_min == p.wait_min
+    assert "late_stops 1" in res.kpi.summary()
+
+
 def test_sequence_ties_deterministic():
     a, b = stop(1, 1, 0), stop(2, 1, 0)
     from tmod.lmd_baseline import _Dist

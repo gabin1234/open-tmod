@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from tmod.lmd_baseline import BaselineRoutes, RouteKPI
 
 FIELDS = ("loads", "stops", "miles", "hub_miles", "inter_stop_miles", "drive_min", "service_min", "duty_min",
-          "over_work", "over_duty", "max_trucks_per_day")
+          "over_work", "over_duty", "late_stops", "wait_min", "max_trucks_per_day")
 
 
 @dataclass(frozen=True)

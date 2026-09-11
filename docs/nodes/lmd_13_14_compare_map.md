@@ -11,7 +11,7 @@ Baseline(Node 08)과 Scenario(Node 10 → `evaluate_loads(keep_order=True)`)의 
 class RouteComparison:
     scenario_name: str
     baseline: RouteKPI; scenario: RouteKPI
-    delta: dict[str, float]          # loads, stops, miles, hub_miles, inter_stop_miles, drive_min, service_min, duty_min, over_work, over_duty, max_trucks_per_day
+    delta: dict[str, float]          # loads, stops, miles, hub_miles, inter_stop_miles, drive_min, service_min, duty_min, over_work, over_duty, late_stops, wait_min, max_trucks_per_day
     delta_pct: dict[str, float]      # baseline 기준 %
     unrouted: tuple[str, ...]        # Scenario에서 drop된 stop
     gate_passed: bool

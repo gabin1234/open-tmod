@@ -1,7 +1,7 @@
 # LMD Node 09/10 — Scenario + VRP Optimization (`tmod/lmd_optimize.py`)
 
 상태: FROZEN (2026-09-11 사전 승인)
-버전: 1.0
+버전: 1.1 (2026-09-11: use_windows)
 의존성: ortools (Node 10에서 이미 도입). **Routing solver는 stop 순서·트럭 배정(운영 최적화)에만 사용. 도로 거리는 Node 06 Provider.**
 
 ## Node 09 — Scenario 규칙
@@ -15,6 +15,7 @@ class LmdScenario:
     stop_pool: str = "baseline"        # "baseline" = LOAD_ID 있는 stop만 (공정 비교) | "all" = SOFT_ALLOC 포함 전부
     zone_penalty_min: int = 0          # 다른 zone stop으로 이동 시 가산 분 (0 = zone 무시, soft 제약)
     time_limit_s: float = 5.0          # 일별 solver 상한
+    use_windows: bool = False          # v1.1: time 차원(도착 = 이전 service + drive, 대기 slack 허용, 상한 duty) + stop appt_window 범위 제약. span cost로 대기 억제
 ```
 JSON 로드: `load_lmd_scenario(path)` (키 = 필드명).
 
@@ -46,5 +47,5 @@ def optimize(lmd, providers, scenario) -> tuple[dict[str, tuple[Stop, ...]], Opt
 5. 실 데이터(skip-if-missing): 27일 전부 solved, baseline 175 stop 전부 routed, 총 duty 초과 0
 
 ## 알려진 한계 (ponytail)
-- 시간창·shift 시각 미반영 (모두 08–12). 필요 시 time dimension에 window 추가 한 줄
+- (v1.1로 해소) `use_windows=True`로 시간창 강제. shift 시각은 첫 트럭 shift_start 기준 (트럭별 상이 시 확장)
 - 하루 단위 독립 최적화. 날짜 이동(RAD 재조정)은 Suggest 엔진 영역

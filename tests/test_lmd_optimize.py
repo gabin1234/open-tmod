@@ -63,6 +63,18 @@ def test_zone_penalty_groups_zones():
     assert len(loads) == 2 and all(len({s.zone for s in v}) == 1 for v in loads.values())
 
 
+def test_use_windows_respects_appt_window():
+    from dataclasses import replace
+    st = [replace(stop(1, 5, 0), window="08:00-09:00"), replace(stop(2, 6, 0), window="08:00-09:00"),
+          replace(stop(3, 7, 0), window="08:00-09:00"), replace(stop(4, 8, 0), window="14:00-16:00")]
+    lmd = _lmd(st, n_trucks=4, duty=600)
+    free, _ = optimize_day(lmd, st, [Manhattan()], LmdScenario("nw", time_limit_s=1), DAY)
+    assert len(free) == 1 and evaluate_loads(lmd, free, [Manhattan()], keep_order=True).kpi.late_stops >= 1
+    win, unrouted = optimize_day(lmd, st, [Manhattan()], LmdScenario("w", use_windows=True, time_limit_s=1), DAY)
+    res = evaluate_loads(lmd, win, [Manhattan()], keep_order=True)
+    assert unrouted == () and res.kpi.late_stops == 0 and res.kpi.over_duty == 0 and len(win) >= 2
+
+
 def test_optimize_days_and_scenario_json(tmp_path):
     other = [Stop(**{**s.__dict__, "id": s.id + "b", "appt_dt": date(2026, 9, 2), "load_id": None}) for s in GRID[:2]]
     lmd = _lmd(GRID + other, n_trucks=2)

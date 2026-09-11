@@ -1,7 +1,7 @@
 # LMD Node 08 — Baseline Routes (`tmod/lmd_baseline.py`)
 
 상태: FROZEN (2026-09-11 승인)
-버전: 1.1 (keep_order 추가, 2026-09-11)
+버전: 1.2 (2026-09-11: keep_order; 시간창 평가 late_stops/wait_min, duty에 대기 포함)
 
 ## 책임
 LMD_SHIPMENT의 확정 load(`LOAD_ID`) 구성을 **그대로** 받아 Provider 거리·시간으로 평가한다. load 구성은 바꾸지 않는다. 시나리오(Node 09/10)도 같은 `evaluate_loads`로 평가해 비교 규칙을 통일한다.
@@ -30,6 +30,9 @@ class RoutePlan:
     duty_min: float                  # drive + service
     over_work: bool                  # service_min > work_min
     over_duty: bool                  # duty_min > duty_min 한도
+    late_stops: int                  # v1.2: shift_start부터 순차 도착 시각이 appt_window 종료 후인 stop 수
+    wait_min: float                  # v1.2: window 시작 전 도착 대기 (duty에 포함)
+    start_min: int                   # shift_start (분)
 
 @dataclass(frozen=True)
 class RouteKPI:
@@ -40,6 +43,7 @@ class RouteKPI:
     avg_stops_per_load: float; avg_duty_min: float
     days: int; max_trucks_per_day: int
     by_provider_miles: dict[str, float]      # "truth" vs "affine_haversine" 비중
+    late_stops: int; wait_min: float          # v1.2
     def summary(self) -> str
 
 @dataclass(frozen=True)
@@ -63,4 +67,4 @@ CLI: `uv run python -m tmod.lmd_baseline data/private/lmd_lphb30260_demo` → KP
 
 ## 알려진 한계 (ponytail)
 - 최근접 순서는 실제 기사 순서와 다를 수 있음. 실 STOP_SEQ 들어오면 `sequence` 함수 교체 지점 하나
-- 시간창(08–12 등) 미반영. 모두 동일 window라 POC 영향 없음
+- (v1.2로 해소) 시간창은 평가에 반영. 순서 최적화는 Node 10 `use_windows`
