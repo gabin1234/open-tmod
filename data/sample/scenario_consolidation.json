@@ -1,0 +1,2 @@
+{"name": "consolidate-3day-44k",
+ "rules": [{"type": "consolidation_window", "days": 3, "max_weight_lb": 44000}]}

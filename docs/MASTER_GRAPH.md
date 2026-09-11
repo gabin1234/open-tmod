@@ -72,4 +72,8 @@ CSV 원본 데이터에서 시작해 Baseline 재현 → Scenario 최적화 → 
 | 11 | FROZEN (stub) | 2026-09-10 | node-11 |
 | 12 | FROZEN | 2026-09-10 | node-12 |
 | 13 | FROZEN | 2026-09-10 | node-13 |
-| 14 | REVIEW | — | — |
+| 14 | FROZEN | 2026-09-11 | node-14 |
+
+## POC v0.1 (2026-09-11, tag `poc-v0.1`)
+14 Node 전부 FROZEN. 실행: `uv run python -m tmod.poc <folder> <scenario.json> <out.html> [--real-data]`
+미완: Node 08 ±2% 게이트는 실 TMS 데이터 대기. 게이트 통과 전 비용 수치는 GATED.
