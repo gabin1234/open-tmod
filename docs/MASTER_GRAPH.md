@@ -84,4 +84,5 @@ CSV 원본 데이터에서 시작해 Baseline 재현 → Scenario 최적화 → 
 |------|------|--------|-----|
 | 00 Extract (LMD adapter) | FROZEN | 2026-09-11 | lmd-00 |
 | 02/03 LMD schema + canonical | FROZEN | 2026-09-11 | lmd-0203 |
-| 06 LMD distance calibration + gate | REVIEW | — | — |
+| 06 LMD distance calibration + gate | FROZEN (게이트 PASS) | 2026-09-11 | lmd-06 |
+| 08 LMD Baseline | REVIEW | — | — |

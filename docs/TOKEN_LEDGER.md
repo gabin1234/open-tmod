@@ -22,3 +22,4 @@
 | 00 | BY TMS 탐색 + 추출 어댑터 | ~90k | ~25k | ~477k | scripts/ora.py, scripts/extract_bytms.py, 2022-03 TL 추출, 오프라인 feasibility |
 | 00-LMD | LMD 탐색 + 어댑터 + 트랙 문서 | ~40k | ~14k | ~531k | scripts/extract_lmd.py, docs/LMD_TRACK.md |
 | LMD-02/03 | schema + canonical | ~12k | ~9k | ~552k | tmod/lmd.py |
+| LMD-06 | distance calibration + gate | ~14k | ~9k | ~575k | tmod/lmd_routing.py, scripts/extract_lmd_truth.py, held-out gap +0.76% |
