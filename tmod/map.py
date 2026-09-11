@@ -71,7 +71,7 @@ table{{border-collapse:collapse}}td,th{{border:1px solid #ccc;padding:2px 6px;te
 const D={data};
 const map=L.map('map');L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png',{{attribution:'© OpenStreetMap'}}).addTo(map);
 const g=L.featureGroup().addTo(map);
-D.base.forEach(l=>L.polyline(l.coords,{{color:'#888',weight:1+Math.log2(l.n),opacity:.6}}).bindTooltip(l.label).addTo(g));
+D.base.forEach(l=>L.polyline(l.coords,{{color:'#888',weight:4+Math.log2(l.n),opacity:.5}}).bindTooltip(l.label).addTo(g));
 D.scen.forEach(l=>L.polyline(l.coords,{{color:'#1f77b4',weight:1+Math.log2(l.n),opacity:.8}}).bindTooltip(l.label).addTo(g));
 D.pts.forEach(p=>L.circleMarker(p,{{radius:4,color:'#d62728'}}).addTo(g));
 if(D.pts.length)map.fitBounds(g.getBounds().pad(0.1));else map.setView([39,-96],4);
