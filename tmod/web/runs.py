@@ -25,10 +25,15 @@ def _count(path: Path) -> int:
         return sum(1 for _ in csv.reader(f)) - 1
 
 
+def _baseline_loads(path: Path) -> int:
+    with open(path, newline="") as f:
+        return len({r.get("load_id") for r in csv.DictReader(f) if r.get("load_id")})
+
+
 def list_datasets(data_dir: Path = DATA_DIR) -> list[dict]:
     out = []
     for d in sorted(p for p in data_dir.glob("lmd_*") if (p / "shipments.csv").exists()):
-        out.append({"id": d.name, "path": str(d), "shipments": _count(d / "shipments.csv"),
+        out.append({"id": d.name, "path": str(d), "shipments": _count(d / "shipments.csv"), "baseline_loads": _baseline_loads(d / "shipments.csv"),
                     "trucks": _count(d / "trucks.csv") if (d / "trucks.csv").exists() else 0,
                     "extracted_at": datetime.fromtimestamp((d / "shipments.csv").stat().st_mtime).isoformat(timespec="minutes"),
                     "has_truth": (d / "distance_truth.csv").exists(), "has_calibration": (d / "calibration.json").exists()})

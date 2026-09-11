@@ -139,3 +139,44 @@ def test_lan_clients_skip_token(tmp_path):
     with TestClient(create_app(tmp_path, tmp_path / "runs", token="s3cret"), client=("192.168.1.20", 5555)) as c:
         assert c.get("/api/health").status_code == 200
         assert c.get("/api/health", headers={"cf-connecting-ip": "8.8.8.8"}).status_code == 401  # via tunnel -> token
+
+
+def _xlsx(path, rows, header=("shipment_id", "purchase_order", "delivery_date", "order_type", "customer_name", "phone", "address", "city", "state", "zip", "latitude", "longitude", "model_code", "pieces", "weight_lb", "volume_cuft", "service_minutes", "notes")):
+    import openpyxl
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Shipments"; ws.append(list(header))
+    for r in rows: ws.append(list(r))
+    wb.save(path)
+
+
+def test_upload_convert_and_run(tmp_path):
+    from datetime import datetime
+    from tmod.web.upload import convert_xlsx
+    tpl = tmp_path / "lmd_lphb30260_demo"; tpl.mkdir()
+    (tpl / "shipments.csv").write_text(SHIP); (tpl / "trucks.csv").write_text(TRUCKS); (tpl / "distance_truth.csv").write_text(TRUTH)
+    (tpl / "zone_zip.csv").write_text("hub_cd,zip_from,zip_to,zone_cd,match_priority\nLPHB-30260,30301,30318,Z1,10\nLPHB-30260,30000,30099,Z5,10\n")
+    (tpl / "params.csv").write_text("param_cd,param_val\nSTOP_BASE_MIN,20\n")
+    x = tmp_path / "s.xlsx"
+    _xlsx(x, [("SH1", "PO1", datetime(2026, 9, 11), "BUILDER", "Bob", "555", "7178 Highland Blvd", "Douglasville", "GA", "30309", 33.76, -84.74, "M", 1, 300, 80, 20, None),
+              ("SH2", "PO1", datetime(2026, 9, 11), "BUILDER", "Bob", "555", "7178 Highland Blvd", "Douglasville", "GA", "30309", 33.76, -84.74, "M", 2, 100, 10, 45, "side door"),
+              ("SH3", "PO2", datetime(2026, 9, 12), "OBS", "Ann", "555", "1 Main St", "Atlanta", "GA", "30032", None, None, "M", 1, 50, 5, 0, None)])
+    info = convert_xlsx(x, tpl, tmp_path / "lmd_upload_t")
+    assert info == {"dataset": "lmd_upload_t", "rows": 3, "stops": 2, "days": 2, "unknown_zone": 0}
+    rows = list(__import__("csv").DictReader(open(tmp_path / "lmd_upload_t" / "shipments.csv")))
+    assert rows[0]["ship_to_id"] == rows[1]["ship_to_id"] != rows[2]["ship_to_id"]
+    assert rows[1]["req_capa_min"] == "65" and rows[1]["charge_min"] == "45" and rows[0]["zone_cd"] == "Z1" and rows[2]["zone_cd"] == "Z5"
+    assert rows[0]["appt_dt"] == "2026-09-11" and rows[0]["lat"] == "33.76" and rows[0]["status_cd"] == "SOFT_ALLOC" and rows[0]["load_id"] == ""
+    assert "customer_name" not in rows[0] and "phone" not in rows[0]
+    assert (tmp_path / "lmd_upload_t" / "trucks.csv").exists() and (tmp_path / "lmd_upload_t" / "distance_truth.csv").exists()
+    with pytest.raises(ValueError, match="missing"):
+        _xlsx(tmp_path / "bad.xlsx", [], header=("shipment_id", "zip")); convert_xlsx(tmp_path / "bad.xlsx", tpl, tmp_path / "lmd_upload_bad")
+
+    with TestClient(create_app(tmp_path, tmp_path / "runs")) as c:
+        r = c.post("/api/datasets/upload", data={"name": "web test", "template": "lmd_lphb30260_demo"}, files={"file": ("s.xlsx", open(x, "rb"), "application/octet-stream")})
+        assert r.status_code == 201 and r.json()["dataset"] == "lmd_upload_web_test", r.text
+        ds = {d["id"]: d for d in c.get("/api/datasets").json()}
+        assert ds["lmd_upload_web_test"]["baseline_loads"] == 0 and ds["lmd_lphb30260_demo"]["baseline_loads"] == 3
+        assert c.post("/api/datasets/upload", files={"file": ("s.csv", b"x", "text/csv")}).status_code == 400
+        rid = c.post("/api/runs", json={"dataset": "lmd_upload_web_test", "scenario": {"name": "up", "stop_pool": "all", "time_limit_s": 1}}).json()["run_id"]
+        d = _wait(c, rid)
+        assert d["status"] == "done", d.get("error")
+        assert d["kpi"]["baseline"]["loads"] == 0 and d["optimize"]["routed"] == 2 and d["kpi"]["scenario"]["loads"] >= 1

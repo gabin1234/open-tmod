@@ -31,6 +31,9 @@ table{border-collapse:collapse;font-size:12px}td,th{border:1px solid var(--b);pa
  <h3>Dataset</h3><select id="dataset"></select>
  <div class="row" style="margin-top:6px"><select id="refresh_crt"><option value="demo">crt_by=demo</option><option value="all">all rows</option></select><button id="refresh">Refresh from QA DB</button></div>
  <div id="refresh_status" class="muted"></div>
+ <label>upload shipments (.xlsx)<input type="file" id="upload_file" accept=".xlsx"></label>
+ <div class="row"><input id="upload_name" placeholder="dataset name (optional)"><button id="upload">Upload</button></div>
+ <div id="upload_status" class="muted"></div>
  <h3>Scenario</h3>
  <label>name<input id="s_name" value="vrp"></label>
  <div class="row"><label>trucks<input id="s_trucks" type="number" placeholder="master"></label><label>time limit (s)<input id="s_time_limit_s" type="number" value="5" step="1"></label></div>

@@ -4,11 +4,13 @@ from __future__ import annotations
 import ipaddress
 import os
 import secrets
+import re
+import tempfile
 import urllib.request
 from dataclasses import asdict, fields
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
@@ -16,6 +18,7 @@ from pydantic import BaseModel, ConfigDict
 from tmod.lmd_optimize import LmdScenario
 from tmod.web.refresh import RefreshJobs, default_extractor
 from tmod.web.runs import DATA_DIR, RUNS_DIR, RunStore, list_datasets
+from tmod.web.upload import convert_xlsx
 
 WEB_DIR = Path(__file__).resolve().parent.parent.parent / "web"
 
@@ -90,6 +93,29 @@ def create_app(data_dir: Path = DATA_DIR, runs_dir: Path = RUNS_DIR, extractor=d
     @app.get("/api/health")
     def health():
         return {"status": "ok", "valhalla": valhalla_alive(), "datasets": len(list_datasets(data_dir)), "db": jobs.health()}
+
+    @app.post("/api/datasets/upload", status_code=201)
+    async def upload(file: UploadFile = File(...), name: str | None = Form(None), hub: str = Form("LPHB-30260"),
+                     template: str | None = Form(None)):
+        if not (file.filename or "").lower().endswith(".xlsx"):
+            raise HTTPException(400, "xlsx file required")
+        ds = list_datasets(data_dir)
+        tpl = data_dir / (template or next((d["id"] for d in ds if d["has_truth"]), ds[0]["id"] if ds else ""))
+        if not (tpl / "trucks.csv").exists():
+            raise HTTPException(400, f"template dataset not found: {tpl.name}")
+        slug = re.sub(r"[^a-z0-9]+", "_", (name or Path(file.filename).stem).lower()).strip("_")[:40] or "upload"
+        out = data_dir / f"lmd_upload_{slug}"
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+            tmp.write(await file.read())
+        try:
+            return convert_xlsx(tmp.name, tpl, out, hub)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        finally:
+            Path(tmp.name).unlink(missing_ok=True)
+            store.prepared.pop((out.name, None), None)
+            for k in [k for k in store.prepared if k[0] == out.name]:
+                store.prepared.pop(k)
 
     @app.post("/api/datasets/refresh", status_code=202)
     def refresh(body: RefreshIn):

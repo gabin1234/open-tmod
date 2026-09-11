@@ -14,6 +14,8 @@ async function init() {
   const h = await api("/api/health");
   $("health").textContent = `api ok · valhalla ${h.valhalla ? "up" : "down"} · db ${h.db && h.db.ok ? "up " + h.db.latency_ms + "ms" : "down"} · ${h.datasets} dataset(s)`;
   $("refresh").onclick = refresh;
+  $("upload").onclick = upload;
+  $("dataset").onchange = onDataset;
   $("valhalla").checked = h.valhalla;
   await loadDatasets();
   $("run").onclick = submit;
@@ -29,9 +31,29 @@ function scenarioFromForm() {
           time_limit_s: Number($("s_time_limit_s").value || 5), use_windows: $("s_use_windows").checked};
 }
 
+let datasets = [];
 async function loadDatasets() {
-  const ds = await api("/api/datasets");
-  $("dataset").innerHTML = ds.map(d => `<option value="${d.id}">${d.id} (${d.shipments} shpm${d.has_truth ? "" : ", no truth"})</option>`).join("");
+  datasets = await api("/api/datasets");
+  $("dataset").innerHTML = datasets.map(d => `<option value="${d.id}">${d.id} (${d.shipments} shpm, ${d.baseline_loads} loads${d.has_truth ? "" : ", no truth"})</option>`).join("");
+  onDataset();
+}
+function onDataset() {
+  const d = datasets.find(x => x.id === $("dataset").value);
+  if (d && d.baseline_loads === 0) { $("s_stop_pool").value = "all"; $("s_stop_pool").title = "no LOAD_ID in this dataset: routing all stops"; }
+}
+
+async function upload() {
+  const f = $("upload_file").files[0];
+  if (!f) { alert("choose an .xlsx file"); return; }
+  $("upload").disabled = true; $("upload_status").textContent = "uploading…";
+  try {
+    const fd = new FormData(); fd.append("file", f); if ($("upload_name").value) fd.append("name", $("upload_name").value);
+    fd.append("template", $("dataset").value);
+    const r = await api("/api/datasets/upload", {method: "POST", body: fd});
+    $("upload_status").textContent = `ok: ${r.dataset} · ${r.rows} shipments · ${r.stops} stops · ${r.days} days${r.unknown_zone ? " · " + r.unknown_zone + " without zone" : ""}`;
+    await loadDatasets(); $("dataset").value = r.dataset; onDataset();
+  } catch (e) { $("upload_status").textContent = "error: " + e.message; }
+  $("upload").disabled = false;
 }
 
 async function refresh() {

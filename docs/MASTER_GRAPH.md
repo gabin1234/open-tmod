@@ -96,3 +96,4 @@ CSV 원본 데이터에서 시작해 Baseline 재현 → Scenario 최적화 → 
 | W02 Frontend | FROZEN | 2026-09-11 | web-02 |
 | W03 Refresh + Health | FROZEN | 2026-09-11 | web-03 |
 | W04 Ops | FROZEN | 2026-09-11 | web-04 |
+| W05 xlsx Upload | FROZEN | 2026-09-11 | web-05 |
