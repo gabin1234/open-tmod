@@ -1,7 +1,7 @@
 # Node 06 — Road Routing
 
 상태: FROZEN (2026-09-10 승인)
-버전: 1.0
+버전: 1.1 (2026-09-11: `Route.geometry` 선택 필드 추가 — Provider가 도로 polyline을 주면 [(lat,lon),…], 아니면 None. ValhallaProvider가 `legs[].shape`(polyline6) 디코드. 기존 호출 무변경)
 
 ## 책임
 O-D Location 쌍의 도로 거리(miles)와 시간(minutes)을 계산한다. **Provider 책임**: 구현체는 교체 가능하고 상위 Node는 `Route`만 본다. OR-Tools는 사용하지 않는다.

@@ -40,3 +40,7 @@ demo 데이터는 v4 시뮬레이터 실적을 +64일 시프트한 것. Cloning 
 ## 하지 않는 것 (POC)
 - Appointment Suggest / Capacity 차감 로직 재구현 (Nate 엔진 영역). 우리는 확정 APPT_DT 이후 라우팅만
 - 실시간 연동, DB 쓰기. 읽기 전용 추출 → CSV → 모델
+
+## 2026-09-11 추가: 시간창 + 실도로
+- 시간창: Node 08 v1.2 (`late_stops`, `wait_min`), Node 10 v1.1 (`use_windows`). demo baseline은 08–12 window 기준 late 60 stop; `use_windows` VRP는 late 0, 대신 load 68→76
+- 실도로: Valhalla(Georgia OSM, truck costing) = Node 06 Provider 체인 맨 앞. `scripts/valhalla_up.sh` 기동, `tmod.lmd_poc … --valhalla http://localhost:8002`. 경로 geometry는 `routes_valhalla.json` 캐시 후 지도에 실도로 polyline으로 표시. Valhalla vs PC*MILER truth(hub→zip) gap을 CLI가 출력
