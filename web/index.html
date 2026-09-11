@@ -1,2 +1,55 @@
-<!doctype html><meta charset="utf-8"><title>Open T-Modeler LMD</title>
-<body style="font:15px system-ui;padding:24px">W01 placeholder — frontend lands in W02. API: <a href="/api/health">/api/health</a>, <a href="/api/datasets">/api/datasets</a>, <a href="/api/runs">/api/runs</a></body>
+<!doctype html><html><head><meta charset="utf-8"><title>Open T-Modeler LMD</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--b:#ddd;--bg:#f6f6f6}
+body{margin:0;font:14px system-ui;color:#222}
+.app{display:grid;grid-template-columns:320px 1fr;height:100vh}
+.side{border-right:1px solid var(--b);padding:12px;overflow:auto;background:var(--bg)}
+.main{display:grid;grid-template-rows:auto 1fr auto;min-width:0;overflow:hidden}
+h1{font-size:16px;margin:0 0 10px}h3{font-size:13px;margin:14px 0 6px;color:#555;text-transform:uppercase}
+label{display:block;font-size:12px;color:#555;margin-top:6px}
+input,select{width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid var(--b);border-radius:4px;font:inherit}
+.row{display:flex;gap:6px}.row>*{flex:1}
+button{padding:6px 10px;border:1px solid #888;border-radius:4px;background:#fff;cursor:pointer;font:inherit}
+button.primary{background:#1f77b4;color:#fff;border-color:#1f77b4;width:100%;margin-top:10px}
+.runs div.run{padding:6px;border:1px solid var(--b);border-radius:4px;margin-top:6px;background:#fff;cursor:pointer;font-size:12px}
+.run.active{border-color:#1f77b4;box-shadow:0 0 0 1px #1f77b4}
+.badge{display:inline-block;padding:0 6px;border-radius:8px;font-size:11px;color:#fff;background:#999}
+.badge.done{background:#2ca02c}.badge.running{background:#ff7f0e}.badge.error{background:#d62728}
+.kpi{padding:8px 12px;border-bottom:1px solid var(--b);display:flex;gap:16px;align-items:flex-start;overflow:auto}
+table{border-collapse:collapse;font-size:12px}td,th{border:1px solid var(--b);padding:2px 6px;text-align:right;white-space:nowrap}td:first-child,th:first-child{text-align:left}
+#map{min-height:300px}
+.bar{padding:6px 12px;border-bottom:1px solid var(--b);display:flex;gap:12px;align-items:center;font-size:12px}
+.loads{max-height:26vh;overflow:auto;border-top:1px solid var(--b)}
+.loads tr{cursor:pointer}.loads tr.sel{background:#e8f1fa}
+.muted{color:#777;font-size:12px}.err{color:#d62728;font-size:12px;white-space:pre-wrap}
+</style></head><body>
+<div class="app">
+<div class="side">
+ <h1>Open T-Modeler — LMD</h1>
+ <div class="muted" id="health">…</div>
+ <h3>Dataset</h3><select id="dataset"></select>
+ <h3>Scenario</h3>
+ <label>name<input id="s_name" value="vrp"></label>
+ <div class="row"><label>trucks<input id="s_trucks" type="number" placeholder="master"></label><label>time limit (s)<input id="s_time_limit_s" type="number" value="5" step="1"></label></div>
+ <div class="row"><label>work min<input id="s_work_min" type="number" placeholder="500"></label><label>duty min<input id="s_duty_min" type="number" placeholder="600"></label></div>
+ <div class="row"><label>stop pool<select id="s_stop_pool"><option value="baseline">baseline</option><option value="all">all</option></select></label><label>zone penalty (min)<input id="s_zone_penalty_min" type="number" value="0"></label></div>
+ <label><input type="checkbox" id="s_use_windows" style="width:auto"> enforce appointment windows</label>
+ <label><input type="checkbox" id="valhalla" style="width:auto"> road routing (Valhalla)</label>
+ <button class="primary" id="run">Run</button>
+ <h3>Runs</h3><div class="runs" id="runs"></div>
+</div>
+<div class="main">
+ <div class="kpi"><pre id="kpi" style="margin:0;font-size:12px">select or run a scenario</pre><div id="meta" class="muted"></div></div>
+ <div style="display:grid;grid-template-rows:auto 1fr;min-height:0">
+  <div class="bar">day <select id="day"><option value="all">all</option></select>
+   <label><input type="checkbox" id="showBase" checked style="width:auto"> baseline (grey)</label>
+   <label><input type="checkbox" id="showScen" checked style="width:auto"> scenario (color)</label>
+   <span id="sel" class="muted"></span></div>
+  <div id="map"></div>
+ </div>
+ <div class="loads"><table id="loads"></table></div>
+</div></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/app.js"></script>
+</body></html>

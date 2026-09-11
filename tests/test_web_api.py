@@ -68,7 +68,8 @@ def test_validation_errors(client):
     assert client.post("/api/runs", json={"dataset": "nope"}).status_code == 404
     assert client.post("/api/runs", json={"dataset": "lmd_test", "scenario": {"bogus": 1}}).status_code == 422
     assert client.get("/api/runs/zzz").status_code == 404
-    assert client.get("/").status_code == 200
+    assert client.get("/").status_code == 200 and "app.js" in client.get("/").text
+    assert client.get("/static/app.js").status_code == 200
 
 
 REAL = Path("data/private/lmd_lphb30260_demo")
