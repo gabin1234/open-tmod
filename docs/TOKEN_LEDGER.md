@@ -10,3 +10,4 @@
 | 03 | Canonical Model | ~15k | ~9k | ~155k | contract + impl + test |
 | 04 | Address | ~10k | ~7k | ~172k | zip-centric normalize |
 | 05 | Geocoding | ~14k | ~9k | ~195k | ZCTA centroid provider + cache; data/zip_centroids.csv 945KB |
+| 06 | Road Routing | ~12k | ~8k | ~215k | Provider protocol: Haversine(knobs), Valhalla(HTTP), matrix cache |

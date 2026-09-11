@@ -64,5 +64,6 @@ CSV 원본 데이터에서 시작해 Baseline 재현 → Scenario 최적화 → 
 | 03 | FROZEN | 2026-09-10 | node-03 |
 | 04 | FROZEN | 2026-09-10 | node-04 |
 | 05 | FROZEN | 2026-09-10 | node-05 |
-| 06 | REVIEW | — | — |
-| 07–14 | PENDING | — | — |
+| 06 | FROZEN | 2026-09-10 | node-06 |
+| 07 | REVIEW | — | — |
+| 08–14 | PENDING | — | — |
