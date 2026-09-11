@@ -13,3 +13,4 @@ share/
 data/runs/
 ops/.env
 data/*.log
+data/public_url.txt

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- launchd: Cloudflare quick tunnel for the web app. Public URL is written to data/public_url.txt -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.lgcns.tmod-tunnel</string>
+  <key>WorkingDirectory</key><string>/Users/scmitteam/orca/projects/open-tmod</string>
+  <key>ProgramArguments</key><array><string>/bin/bash</string><string>-c</string><string>exec /opt/homebrew/bin/cloudflared tunnel --url http://localhost:8090 --no-autoupdate 2>&1 | tee -a data/cloudflared.log | grep --line-buffered -o 'https://[a-z0-9-]*\.trycloudflare\.com' | grep --line-buffered -v '^https://api\.' | while read u; do echo "$u" > data/public_url.txt; done</string></array>
+  <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+  <key>StandardErrorPath</key><string>/Users/scmitteam/orca/projects/open-tmod/data/cloudflared.log</string>
+</dict></plist>
