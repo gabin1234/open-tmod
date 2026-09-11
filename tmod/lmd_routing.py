@@ -109,7 +109,7 @@ def validate_provider(provider, hub: Location, truth: dict[tuple[str, str], floa
         if p is None:
             continue
         r = provider.route(hub_loc, Location(zip=z, lat=p.lat, lon=p.lon))
-        if r is None:
+        if r is None or miles <= 0:
             continue
         rows.append((haversine_miles(hub_pt.lat, hub_pt.lon, p.lat, p.lon), r.miles, miles, (weights or {}).get((h, z), 1)))
     if not rows:
