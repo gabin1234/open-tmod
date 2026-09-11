@@ -12,3 +12,4 @@ lmd_poc_road_windows.html
 share/
 data/runs/
 ops/.env
+data/*.log
