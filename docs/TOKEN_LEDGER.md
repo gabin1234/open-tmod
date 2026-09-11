@@ -8,3 +8,4 @@
 | 01 | Ingestion | ~20k | ~8k | ~94k | contract + impl + test |
 | 02 | Validation | ~25k | ~12k | ~131k | contract + impl + test (22 tests total) |
 | 03 | Canonical Model | ~15k | ~9k | ~155k | contract + impl + test |
+| 04 | Address | ~10k | ~7k | ~172k | zip-centric normalize |
