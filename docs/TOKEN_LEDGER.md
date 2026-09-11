@@ -21,3 +21,4 @@
 | 14 | Map + POC CLI | ~14k | ~9k | ~362k | Leaflet single HTML, tmod/poc.py end-to-end |
 | 00 | BY TMS 탐색 + 추출 어댑터 | ~90k | ~25k | ~477k | scripts/ora.py, scripts/extract_bytms.py, 2022-03 TL 추출, 오프라인 feasibility |
 | 00-LMD | LMD 탐색 + 어댑터 + 트랙 문서 | ~40k | ~14k | ~531k | scripts/extract_lmd.py, docs/LMD_TRACK.md |
+| LMD-02/03 | schema + canonical | ~12k | ~9k | ~552k | tmod/lmd.py |
