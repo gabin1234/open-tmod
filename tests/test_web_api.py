@@ -82,3 +82,54 @@ def test_real_smoke(tmp_path):
         d = _wait(c, rid, timeout=300)
         assert d["status"] == "done", d.get("error")
         assert d["kpi"]["baseline"]["loads"] == 68 and d["optimize"]["routed"] == 175
+
+
+def _fake_extractor(hub, crt_by, out):
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "shipments.csv").write_text(SHIP)
+    (out / "trucks.csv").write_text(TRUCKS)
+    return out
+
+
+def _boom(hub, crt_by, out):
+    raise RuntimeError("ORA-12170: TNS:Connect timeout")
+
+
+def test_refresh_job_and_health(tmp_path):
+    d = tmp_path / "lmd_lphb30260_demo"
+    d.mkdir()
+    (d / "shipments.csv").write_text(SHIP)
+    (d / "trucks.csv").write_text(TRUCKS)
+    (d / "distance_truth.csv").write_text(TRUTH)
+    with TestClient(create_app(tmp_path, tmp_path / "runs", extractor=_fake_extractor)) as c:
+        h = c.get("/api/health").json()
+        assert "db" in h and isinstance(h["db"]["ok"], bool)
+        job = c.post("/api/datasets/refresh", json={"hub": "LPHB-30260", "crt_by": "all"}).json()["job_id"]
+        for _ in range(50):
+            j = c.get(f"/api/refresh/{job}").json()
+            if j["status"] in ("done", "error"):
+                break
+            time.sleep(0.1)
+        assert j["status"] == "done" and j["dataset"] == "lmd_lphb30260_all" and j["rows"] == 4 and j["truth"] is True
+        assert {x["id"] for x in c.get("/api/datasets").json()} == {"lmd_lphb30260_demo", "lmd_lphb30260_all"}
+        assert c.get("/api/refresh/nope").status_code == 404
+    with TestClient(create_app(tmp_path, tmp_path / "runs", extractor=_boom)) as c:
+        job = c.post("/api/datasets/refresh", json={}).json()["job_id"]
+        for _ in range(50):
+            j = c.get(f"/api/refresh/{job}").json()
+            if j["status"] in ("done", "error"):
+                break
+            time.sleep(0.1)
+        assert j["status"] == "error" and "ORA-12170" in j["error"]
+
+
+def test_token_auth(tmp_path):
+    with TestClient(create_app(tmp_path, tmp_path / "runs", token="s3cret")) as c:
+        assert c.get("/api/health").status_code == 401
+        assert c.get("/api/health", headers={"Authorization": "Bearer s3cret"}).status_code == 200
+        assert c.get("/api/health?token=s3cret").status_code == 200
+        r = c.get("/?token=s3cret", follow_redirects=False)
+        assert r.status_code in (302, 307) and "tmod_token" in r.cookies
+        assert c.get("/api/health").status_code == 200  # cookie kept by client
+        c.cookies.clear()
+        assert c.get("/api/health", headers={"Authorization": "Bearer nope"}).status_code == 401

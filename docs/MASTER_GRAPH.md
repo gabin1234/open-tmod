@@ -93,6 +93,6 @@ CSV 원본 데이터에서 시작해 Baseline 재현 → Scenario 최적화 → 
 | Node | 상태 | 승인일 | tag |
 |------|------|--------|-----|
 | W01 Backend API | FROZEN | 2026-09-11 | web-01 |
-| W02 Frontend | IN PROGRESS (전체 사전 승인) | — | — |
-| W03 Refresh + Health | IN PROGRESS (전체 사전 승인) | — | — |
-| W04 Ops | IN PROGRESS (전체 사전 승인) | — | — |
+| W02 Frontend | FROZEN | 2026-09-11 | web-02 |
+| W03 Refresh + Health | FROZEN | 2026-09-11 | web-03 |
+| W04 Ops | FROZEN | 2026-09-11 | web-04 |

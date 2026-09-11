@@ -12,10 +12,10 @@ async function init() {
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {attribution: "© OpenStreetMap"}).addTo(map);
   layer = L.featureGroup().addTo(map);
   const h = await api("/api/health");
-  $("health").textContent = `api ok · valhalla ${h.valhalla ? "up" : "down"} · ${h.datasets} dataset(s)`;
+  $("health").textContent = `api ok · valhalla ${h.valhalla ? "up" : "down"} · db ${h.db && h.db.ok ? "up " + h.db.latency_ms + "ms" : "down"} · ${h.datasets} dataset(s)`;
+  $("refresh").onclick = refresh;
   $("valhalla").checked = h.valhalla;
-  const ds = await api("/api/datasets");
-  $("dataset").innerHTML = ds.map(d => `<option value="${d.id}">${d.id} (${d.shipments} shpm${d.has_truth ? "" : ", no truth"})</option>`).join("");
+  await loadDatasets();
   $("run").onclick = submit;
   ["day","showBase","showScen"].forEach(id => $(id).onchange = draw);
   await refreshRuns();
@@ -27,6 +27,25 @@ function scenarioFromForm() {
   return {name: $("s_name").value || "vrp", trucks: num("s_trucks"), work_min: num("s_work_min"), duty_min: num("s_duty_min"),
           stop_pool: $("s_stop_pool").value, zone_penalty_min: Number($("s_zone_penalty_min").value || 0),
           time_limit_s: Number($("s_time_limit_s").value || 5), use_windows: $("s_use_windows").checked};
+}
+
+async function loadDatasets() {
+  const ds = await api("/api/datasets");
+  $("dataset").innerHTML = ds.map(d => `<option value="${d.id}">${d.id} (${d.shipments} shpm${d.has_truth ? "" : ", no truth"})</option>`).join("");
+}
+
+async function refresh() {
+  $("refresh").disabled = true;
+  try {
+    const r = await api("/api/datasets/refresh", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({crt_by: $("refresh_crt").value})});
+    const poll = async () => {
+      const j = await api(`/api/refresh/${r.job_id}`);
+      $("refresh_status").textContent = `refresh ${j.status}${j.rows != null ? " · " + j.rows + " rows → " + j.dataset : ""}${j.error ? " · " + j.error : ""}`;
+      if (j.status === "done") { await loadDatasets(); $("dataset").value = j.dataset; }
+      if (j.status === "queued" || j.status === "running") setTimeout(poll, 2000); else $("refresh").disabled = false;
+    };
+    poll();
+  } catch (e) { alert(e.message); $("refresh").disabled = false; }
 }
 
 async function submit() {
