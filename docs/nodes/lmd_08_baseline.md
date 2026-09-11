@@ -1,7 +1,7 @@
 # LMD Node 08 — Baseline Routes (`tmod/lmd_baseline.py`)
 
 상태: FROZEN (2026-09-11 승인)
-버전: 1.0
+버전: 1.1 (keep_order 추가, 2026-09-11)
 
 ## 책임
 LMD_SHIPMENT의 확정 load(`LOAD_ID`) 구성을 **그대로** 받아 Provider 거리·시간으로 평가한다. load 구성은 바꾸지 않는다. 시나리오(Node 09/10)도 같은 `evaluate_loads`로 평가해 비교 규칙을 통일한다.
@@ -49,7 +49,8 @@ class BaselineRoutes:
     skipped: tuple[tuple[str, str], ...]     # (stop id, reason)
 
 def prepare_lmd(folder) -> tuple[LmdDataset, list[RoutingProvider], Calibration]
-def evaluate_loads(lmd, loads: dict[str, Sequence[Stop]], providers, truck_of: dict[str, Truck] | None = None) -> BaselineRoutes
+def evaluate_loads(lmd, loads: dict[str, Sequence[Stop]], providers, truck_of: dict[str, Truck] | None = None, keep_order: bool = False) -> BaselineRoutes
+# keep_order=True: 주어진 순서 그대로 (Node 10 최적화 결과). False: 최근접 (Baseline, STOP_SEQ 없음)  — v1.1
 def baseline(lmd, providers) -> BaselineRoutes            # loads = lmd.baseline_loads()
 ```
 CLI: `uv run python -m tmod.lmd_baseline data/private/lmd_lphb30260_demo` → KPI summary + 일별 트럭 수.

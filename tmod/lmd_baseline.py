@@ -101,8 +101,18 @@ def sequence_nearest(hub: Location, stops: Sequence[Stop], dist: _Dist) -> tuple
     return tuple(order), tuple(legs)
 
 
+def sequence_given(hub: Location, stops: Sequence[Stop], dist: _Dist) -> tuple[tuple[Stop, ...], tuple[Route, ...]]:
+    legs, cur = [], hub
+    for s in stops:
+        legs.append(dist(cur, s.location))
+        cur = s.location
+    legs.append(dist(cur, hub))
+    return tuple(stops), tuple(legs)
+
+
 def evaluate_loads(lmd: LmdDataset, loads: dict[str, Sequence[Stop]], providers: Sequence[RoutingProvider],
-                   truck_of: dict[str, Truck] | None = None) -> BaselineRoutes:
+                   truck_of: dict[str, Truck] | None = None, keep_order: bool = False) -> BaselineRoutes:
+    """keep_order=False: nearest-neighbour (baseline, no STOP_SEQ). True: visit in given order (optimizer output)."""
     truck_of = truck_of if truck_of is not None else {t.id: t for t in lmd.trucks}
     dflt_work, dflt_duty = int(lmd.params.get("TRUCK_WORK_MIN", 500)), int(lmd.params.get("TRUCK_DUTY_MIN", 600))
     dist = _Dist(providers)
@@ -113,7 +123,7 @@ def evaluate_loads(lmd: LmdDataset, loads: dict[str, Sequence[Stop]], providers:
         skipped.extend((s.id, "NO_COORDS") for s in stops if s not in ok)
         if not ok:
             continue
-        order, legs = sequence_nearest(lmd.hub, ok, dist)
+        order, legs = (sequence_given if keep_order else sequence_nearest)(lmd.hub, ok, dist)
         truck_id = ok[0].truck_id
         truck = truck_of.get(truck_id or "")
         work_lim, duty_lim = (truck.work_min, truck.duty_min) if truck else (dflt_work, dflt_duty)

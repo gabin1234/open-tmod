@@ -52,6 +52,12 @@ def test_skip_no_coords_and_pool():
     assert res.kpi.pool_loads == 1
 
 
+def test_keep_order():
+    s1, s2 = stop(1, 10, 0), stop(2, 1, 0)
+    res = evaluate_loads(_lmd([s1, s2]), {"L1": (s1, s2)}, [Manhattan()], keep_order=True)
+    assert [s.id for s in res.plans[0].stops] == ["S1", "S2"] and res.plans[0].miles == 10 + 9 + 1
+
+
 def test_sequence_ties_deterministic():
     a, b = stop(1, 1, 0), stop(2, 1, 0)
     from tmod.lmd_baseline import _Dist
