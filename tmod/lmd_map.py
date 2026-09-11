@@ -14,7 +14,9 @@ COLORS = ["#1f77b4", "#d62728", "#2ca02c", "#9467bd", "#ff7f0e", "#8c564b", "#e3
 
 def _plan_json(p: RoutePlan, hub: Location, color: str) -> dict:
     pts = [[hub.lat, hub.lon]] + [[s.location.lat, s.location.lon] for s in p.stops] + [[hub.lat, hub.lon]]
-    road = [[list(q) for q in leg.geometry] for leg in p.legs if leg.geometry] if all(l.geometry for l in p.legs) else None
+    # per leg: road polyline when the provider gave one, else the straight segment (e.g. "same"-location legs)
+    road = [[list(q) for q in leg.geometry] if leg.geometry else [pts[i], pts[i + 1]] for i, leg in enumerate(p.legs)]
+    road = road if any(l.geometry for l in p.legs) else None
     return {"load": p.load_id, "road": road, "day": p.day.isoformat() if p.day else "none", "truck": p.truck_id, "color": color,
             "pts": pts, "stops": [s.id for s in p.stops], "miles": round(p.miles, 1), "duty": round(p.duty_min),
             "over": p.over_duty or p.over_work}
