@@ -95,3 +95,31 @@ def save_calibration(path: str | Path, cal: Calibration) -> None:
 
 def load_calibration(path: str | Path) -> Calibration:
     return Calibration(**json.loads(Path(path).read_text()))
+
+
+def validate_provider(provider, hub: Location, truth: dict[tuple[str, str], float], geocoder=None,
+                      weights: dict[tuple[str, str], int] | None = None, sample: int | None = None) -> dict:
+    """Compare any RoutingProvider's hub->zip miles against the truth table. Returns gap/MAPE and a per-band gap."""
+    geocoder = geocoder or ZipCentroidGeocoder()
+    hub_pt = hub if hub.lat is not None else geocoder.geocode(hub)
+    hub_loc = Location(zip=hub.zip, lat=hub_pt.lat, lon=hub_pt.lon)
+    rows = []
+    for (h, z), miles in sorted(truth.items())[: sample or None]:
+        p = geocoder.geocode(Location(zip=z))
+        if p is None:
+            continue
+        r = provider.route(hub_loc, Location(zip=z, lat=p.lat, lon=p.lon))
+        if r is None:
+            continue
+        rows.append((haversine_miles(hub_pt.lat, hub_pt.lon, p.lat, p.lon), r.miles, miles, (weights or {}).get((h, z), 1)))
+    if not rows:
+        return {"n": 0}
+    tot_m = sum(m * n for _, m, _, n in rows)
+    tot_t = sum(t * n for _, _, t, n in rows)
+    bands = {}
+    for name, lo, hi in BANDS:
+        sub = [x for x in rows if lo <= x[0] < hi]
+        if sub:
+            bands[name] = round((sum(m * n for _, m, _, n in sub) - sum(t * n for _, _, t, n in sub)) / sum(t * n for _, _, t, n in sub) * 100, 2)
+    return {"n": len(rows), "gap_pct": round((tot_m - tot_t) / tot_t * 100, 2),
+            "mape_pct": round(sum(abs(m - t) / t for _, m, t, _ in rows) / len(rows) * 100, 1), "band_gap_pct": bands}

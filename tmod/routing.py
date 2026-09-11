@@ -20,6 +20,29 @@ class Route:
     miles: float
     minutes: float
     provider: str
+    geometry: tuple[tuple[float, float], ...] | None = None   # v1.1: road polyline [(lat, lon), ...] when the provider has it
+
+
+def decode_polyline6(s: str) -> tuple[tuple[float, float], ...]:
+    """Valhalla encoded shape (precision 1e-6) -> ((lat, lon), ...)."""
+    out, i, lat, lon = [], 0, 0, 0
+    while i < len(s):
+        for which in (0, 1):
+            shift = result = 0
+            while True:
+                b = ord(s[i]) - 63
+                i += 1
+                result |= (b & 0x1F) << shift
+                shift += 5
+                if b < 0x20:
+                    break
+            delta = ~(result >> 1) if result & 1 else result >> 1
+            if which == 0:
+                lat += delta
+            else:
+                lon += delta
+        out.append((lat / 1e6, lon / 1e6))
+    return tuple(out)
 
 
 class RoutingProvider(Protocol):
@@ -58,10 +81,12 @@ class ValhallaProvider:
         req = urllib.request.Request(f"{self.base_url}/route", data=body, headers={"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                s = json.load(resp)["trip"]["summary"]
+                trip = json.load(resp)["trip"]
         except (urllib.error.URLError, TimeoutError, KeyError, ValueError, OSError):
             return None
-        return Route(float(s["length"]), float(s["time"]) / 60, self.name)
+        s = trip["summary"]
+        shape = tuple(pt for leg in trip.get("legs", []) for pt in decode_polyline6(leg.get("shape", "")))
+        return Route(float(s["length"]), float(s["time"]) / 60, self.name, shape or None)
 
 
 RouteMatrix = dict[tuple[str, str], Route]
@@ -79,7 +104,11 @@ def load_cache(path: str | Path) -> RouteMatrix:
     p = Path(path)
     if not p.exists():
         return {}
-    return {tuple(k.split("|", 1)): Route(**v) for k, v in json.loads(p.read_text()).items()}
+    out = {}
+    for k, v in json.loads(p.read_text()).items():
+        g = v.get("geometry")
+        out[tuple(k.split("|", 1))] = Route(v["miles"], v["minutes"], v["provider"], tuple(map(tuple, g)) if g else None)
+    return out
 
 
 def save_cache(path: str | Path, cache: RouteMatrix) -> None:

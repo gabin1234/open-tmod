@@ -54,8 +54,16 @@ def test_matrix_order_dedupe_unrouted_cache(tmp_path):
     assert load_cache(tmp_path / "none.json") == {}
 
 
+def test_polyline6_roundtrip_cache(tmp_path):
+    from tmod.routing import decode_polyline6
+    assert decode_polyline6("") == ()
+    r = Route(1.0, 2.0, "valhalla", ((33.5, -84.3), (33.6, -84.4)))
+    save_cache(tmp_path / "c.json", {("a", "b"): r})
+    assert load_cache(tmp_path / "c.json")[("a", "b")] == r
+
+
 def test_valhalla(monkeypatch):
-    payload = {"trip": {"summary": {"length": 790.5, "time": 45000}}}
+    payload = {"trip": {"summary": {"length": 790.5, "time": 45000}, "legs": [{"shape": "_p~iF~ps|U_ulLnnqC_mqNvxq`@"}]}}
 
     class Resp(io.BytesIO):
         def __enter__(self):
@@ -72,7 +80,8 @@ def test_valhalla(monkeypatch):
 
     monkeypatch.setattr(routing.urllib.request, "urlopen", fake_urlopen)
     r = ValhallaProvider("http://v:8002/").route(CHI, NYC)
-    assert r == Route(790.5, 750.0, "valhalla")
+    assert (r.miles, r.minutes, r.provider) == (790.5, 750.0, "valhalla") and len(r.geometry) == 3
+    assert abs(r.geometry[0][0] - 3.85) < 1e-6  # Google 1e-5 test string (38.5,-120.2) decoded at 1e-6 -> /10
     assert seen["url"] == "http://v:8002/route" and seen["body"]["costing"] == "truck"
 
     def boom(req, timeout):

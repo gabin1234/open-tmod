@@ -14,7 +14,8 @@ COLORS = ["#1f77b4", "#d62728", "#2ca02c", "#9467bd", "#ff7f0e", "#8c564b", "#e3
 
 def _plan_json(p: RoutePlan, hub: Location, color: str) -> dict:
     pts = [[hub.lat, hub.lon]] + [[s.location.lat, s.location.lon] for s in p.stops] + [[hub.lat, hub.lon]]
-    return {"load": p.load_id, "day": p.day.isoformat() if p.day else "none", "truck": p.truck_id, "color": color,
+    road = [[list(q) for q in leg.geometry] for leg in p.legs if leg.geometry] if all(l.geometry for l in p.legs) else None
+    return {"load": p.load_id, "road": road, "day": p.day.isoformat() if p.day else "none", "truck": p.truck_id, "color": color,
             "pts": pts, "stops": [s.id for s in p.stops], "miles": round(p.miles, 1), "duty": round(p.duty_min),
             "over": p.over_duty or p.over_work}
 
@@ -46,7 +47,8 @@ L.marker(D.hub).addTo(map).bindTooltip('hub');
 const g=L.featureGroup().addTo(map);
 function draw(){{g.clearLayers();const day=document.getElementById('day').value;
  const show=(arr,w,op)=>arr.forEach(p=>{{if(day!=='all'&&p.day!==day)return;
-   L.polyline(p.pts,{{color:p.color,weight:w,opacity:op,dashArray:p.over?'6 4':null}}).bindTooltip(`${{p.load}} ${{p.truck||''}} ${{p.stops.length}} stops ${{p.miles}} mi ${{p.duty}} min`).addTo(g);
+   const line=p.road?p.road:[p.pts];
+   L.polyline(line,{{color:p.color,weight:w,opacity:op,dashArray:p.over?'6 4':null}}).bindTooltip(`${{p.load}} ${{p.truck||''}} ${{p.stops.length}} stops ${{p.miles}} mi ${{p.duty}} min${{p.road?' (road)':' (straight)'}}`).addTo(g);
    p.pts.slice(1,-1).forEach(q=>L.circleMarker(q,{{radius:3,color:p.color}}).addTo(g));}});
  if(document.getElementById('showBase').checked)show(D.base,6,.35);
  if(document.getElementById('showScen').checked)show(D.scen,2.5,.9);

@@ -10,15 +10,21 @@ from tmod.lmd_map import write_lmd_html
 from tmod.lmd_optimize import LmdScenario, load_lmd_scenario, optimize
 
 
-def run(folder: str | Path, scenario: LmdScenario | str | Path | None = None, out_html: str | Path = "lmd_poc.html"
-        ) -> tuple[RouteComparison, Path]:
+def run(folder: str | Path, scenario: LmdScenario | str | Path | None = None, out_html: str | Path = "lmd_poc.html",
+        valhalla_url: str | None = None) -> tuple[RouteComparison, Path]:
     sc = scenario if isinstance(scenario, LmdScenario) else (load_lmd_scenario(scenario) if scenario else LmdScenario("vrp-default"))
-    lmd, providers, cal = prepare_lmd(folder)                                   # 01-06
+    lmd, providers, cal = prepare_lmd(folder, valhalla_url)                     # 01-06
+    if valhalla_url:
+        from tmod.lmd_routing import load_truth, validate_provider
+        truth = load_truth(Path(folder) / "distance_truth.csv")
+        print(f"valhalla vs PC*MILER truth (hub->zip): {validate_provider(providers[0], lmd.hub, truth)}")
     base = baseline(lmd, providers)                                             # 08
     loads, orep = optimize(lmd, providers, sc)                                  # 09-10
     scen = evaluate_loads(lmd, loads, providers, keep_order=True)               # 12
     cmp = compare_routes(sc.name, base, scen, orep.unrouted, cal.within_tolerance)   # 13
     out = write_lmd_html(out_html, cmp, base, scen, lmd.hub)                    # 14
+    if hasattr(providers[0], "flush"):
+        providers[0].flush()
     print(f"gate {'PASS' if cal.within_tolerance else 'FAIL'} (test gap {cal.test_gap_pct:+.2f}%, a={cal.a:.2f} b={cal.b:.3f})")
     print(f"optimize: days {orep.days}, stops {orep.stops}, routed {orep.routed}, loads {orep.loads}, status {orep.solver_status}")
     print(cmp.summary())
@@ -27,5 +33,6 @@ def run(folder: str | Path, scenario: LmdScenario | str | Path | None = None, ou
 
 
 if __name__ == "__main__":
-    a = sys.argv[1:]
-    run(a[0], a[1] if len(a) > 1 else None, a[2] if len(a) > 2 else "lmd_poc.html")
+    a = [x for x in sys.argv[1:] if not x.startswith("--")]
+    vh = sys.argv[sys.argv.index("--valhalla") + 1] if "--valhalla" in sys.argv else None
+    run(a[0], a[1] if len(a) > 1 and a[1] else None, a[2] if len(a) > 2 else "lmd_poc.html", vh)

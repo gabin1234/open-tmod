@@ -14,7 +14,7 @@ from tmod.geocoding import ZipCentroidGeocoder, geocode
 from tmod.ingestion import ingest
 from tmod.lmd import LmdDataset, Stop, Truck, apply_geocoded, build_lmd, to_dataset, LMD_SCHEMAS
 from tmod.lmd_routing import AffineHaversineProvider, Calibration, TruthProvider, calibrate, load_calibration, load_truth, save_calibration
-from tmod.routing import Route, RoutingProvider
+from tmod.routing import Route, RoutingProvider, ValhallaProvider, load_cache, save_cache
 from tmod.validation import validate
 
 
@@ -94,8 +94,10 @@ class BaselineRoutes:
 
 
 class _Dist:
-    def __init__(self, providers: Sequence[RoutingProvider]) -> None:
-        self.providers, self.cache = providers, {}
+    """Pairwise route lookup with an in-memory cache; `shared` lets callers persist it (Node 06 load/save_cache)."""
+
+    def __init__(self, providers: Sequence[RoutingProvider], shared: dict | None = None) -> None:
+        self.providers, self.cache = providers, shared if shared is not None else {}
 
     def __call__(self, o: Location, d: Location) -> Route:
         k = (o.key, d.key)
@@ -195,7 +197,31 @@ def baseline(lmd: LmdDataset, providers: Sequence[RoutingProvider]) -> BaselineR
     return evaluate_loads(lmd, lmd.baseline_loads(), providers)
 
 
-def prepare_lmd(folder: str | Path) -> tuple[LmdDataset, list[RoutingProvider], Calibration]:
+class CachedProvider:
+    """Wrap a slow provider (Valhalla) with a JSON-persisted (origin.key, dest.key) cache."""
+    def __init__(self, inner: RoutingProvider, path: str | Path) -> None:
+        self.inner, self.path, self.name = inner, Path(path), inner.name
+        self.cache = load_cache(self.path)
+        self.misses = 0
+
+    def route(self, o: Location, d: Location) -> Route | None:
+        k = (o.key, d.key)
+        if k not in self.cache:
+            r = self.inner.route(o, d)
+            if r is None:
+                return None
+            self.cache[k] = r
+            self.misses += 1
+            if self.misses % 50 == 0:
+                save_cache(self.path, self.cache)
+        return self.cache[k]
+
+    def flush(self) -> None:
+        save_cache(self.path, self.cache)
+
+
+def prepare_lmd(folder: str | Path, valhalla_url: str | None = None) -> tuple[LmdDataset, list[RoutingProvider], Calibration]:
+    """valhalla_url: if given, road routing (with geometry) is the first provider; truth/affine remain as fallback."""
     folder = Path(folder)
     names = [n for n in ("shipments", "trucks", "zone_zip", "params") if (folder / f"{n}.csv").exists()]
     tables = ingest({n: folder / f"{n}.csv" for n in names})
@@ -214,11 +240,13 @@ def prepare_lmd(folder: str | Path) -> tuple[LmdDataset, list[RoutingProvider], 
         cal = calibrate(Location(zip=lmd.hub.zip), truth, weights=weights)
         save_calibration(cpath, cal)
     providers: list[RoutingProvider] = [TruthProvider(truth, cal.mph), AffineHaversineProvider(cal.a, cal.b, cal.mph)]
+    if valhalla_url:
+        providers.insert(0, CachedProvider(ValhallaProvider(valhalla_url, costing="truck"), folder / "routes_valhalla.json"))
     return lmd, providers, cal
 
 
 if __name__ == "__main__":
-    lmd, providers, cal = prepare_lmd(sys.argv[1])
+    lmd, providers, cal = prepare_lmd(sys.argv[1], sys.argv[sys.argv.index("--valhalla") + 1] if "--valhalla" in sys.argv else None)
     res = baseline(lmd, providers)
     print(f"calibration a={cal.a:.2f} b={cal.b:.3f} mph={cal.mph} gate={'PASS' if cal.within_tolerance else 'FAIL'} (test gap {cal.test_gap_pct:+.2f}%)")
     print(res.kpi.summary())
