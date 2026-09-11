@@ -13,3 +13,4 @@
 | 06 | Road Routing | ~12k | ~8k | ~215k | Provider protocol: Haversine(knobs), Valhalla(HTTP), matrix cache |
 | 07 | Rating | ~10k | ~7k | ~232k | per_mile/per_cwt/flat, min_charge, fuel_pct |
 | 08 | Baseline | ~22k | ~14k | ~268k | pipeline 01-07, gap, calibrate; scripts/make_sample.py, data/sample/ |
+| 09 | Scenario | ~9k | ~6k | ~283k | CarrierSwitch 적용, ConsolidationWindow pending, JSON 로드 |
