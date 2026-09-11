@@ -88,3 +88,11 @@ CSV 원본 데이터에서 시작해 Baseline 재현 → Scenario 최적화 → 
 | 08 LMD Baseline | FROZEN | 2026-09-11 | lmd-08 |
 | 09/10 LMD Scenario + VRP | FROZEN | 2026-09-11 | lmd-0910 |
 | 13/14 LMD Comparison + Map + POC CLI | FROZEN | 2026-09-11 | lmd-1314, lmd-poc-v0.1 |
+
+## Web App Track (2026-09-11~) — [docs/WEBAPP_GRAPH.md](WEBAPP_GRAPH.md)
+| Node | 상태 | 승인일 | tag |
+|------|------|--------|-----|
+| W01 Backend API | FROZEN | 2026-09-11 | web-01 |
+| W02 Frontend | IN PROGRESS (전체 사전 승인) | — | — |
+| W03 Refresh + Health | IN PROGRESS (전체 사전 승인) | — | — |
+| W04 Ops | IN PROGRESS (전체 사전 승인) | — | — |

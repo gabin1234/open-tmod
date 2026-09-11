@@ -27,3 +27,4 @@
 | LMD-09/10 | scenario + VRP | ~18k | ~11k | ~625k | tmod/lmd_optimize.py; real 68→55 loads |
 | LMD-13/14 | compare + map + CLI | ~12k | ~9k | ~646k | tmod/lmd_compare.py, lmd_map.py, lmd_poc.py |
 | LMD-road | Valhalla 실도로 + 시간창 | ~45k | ~20k | ~745k | Georgia OSM, Route.geometry, use_windows |
+| W01 | Backend API | ~16k | ~12k | ~773k | tmod/web/{app,runs,serialize}.py, +fastapi/uvicorn |
