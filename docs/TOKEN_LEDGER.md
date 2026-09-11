@@ -23,3 +23,4 @@
 | 00-LMD | LMD 탐색 + 어댑터 + 트랙 문서 | ~40k | ~14k | ~531k | scripts/extract_lmd.py, docs/LMD_TRACK.md |
 | LMD-02/03 | schema + canonical | ~12k | ~9k | ~552k | tmod/lmd.py |
 | LMD-06 | distance calibration + gate | ~14k | ~9k | ~575k | tmod/lmd_routing.py, scripts/extract_lmd_truth.py, held-out gap +0.76% |
+| LMD-08 | baseline routes | ~12k | ~9k | ~596k | tmod/lmd_baseline.py; 68 loads 5,736 mi |
