@@ -24,3 +24,5 @@
 | LMD-02/03 | schema + canonical | ~12k | ~9k | ~552k | tmod/lmd.py |
 | LMD-06 | distance calibration + gate | ~14k | ~9k | ~575k | tmod/lmd_routing.py, scripts/extract_lmd_truth.py, held-out gap +0.76% |
 | LMD-08 | baseline routes | ~12k | ~9k | ~596k | tmod/lmd_baseline.py; 68 loads 5,736 mi |
+| LMD-09/10 | scenario + VRP | ~18k | ~11k | ~625k | tmod/lmd_optimize.py; real 68→55 loads |
+| LMD-13/14 | compare + map + CLI | ~12k | ~9k | ~646k | tmod/lmd_compare.py, lmd_map.py, lmd_poc.py |

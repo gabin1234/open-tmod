@@ -86,5 +86,5 @@ CSV 원본 데이터에서 시작해 Baseline 재현 → Scenario 최적화 → 
 | 02/03 LMD schema + canonical | FROZEN | 2026-09-11 | lmd-0203 |
 | 06 LMD distance calibration + gate | FROZEN (게이트 PASS) | 2026-09-11 | lmd-06 |
 | 08 LMD Baseline | FROZEN | 2026-09-11 | lmd-08 |
-| 09/10 LMD Scenario + VRP | IN PROGRESS (사전 승인) | — | — |
-| 13/14 LMD Comparison + Map | IN PROGRESS (사전 승인) | — | — |
+| 09/10 LMD Scenario + VRP | FROZEN | 2026-09-11 | lmd-0910 |
+| 13/14 LMD Comparison + Map + POC CLI | FROZEN | 2026-09-11 | lmd-1314, lmd-poc-v0.1 |
