@@ -17,3 +17,4 @@
 | 10 | Optimization | ~14k | ~9k | ~306k | CP-SAT bin packing consolidation; +ortools |
 | 11 | Simulation (stub) | ~5k | ~3k | ~314k | deterministic transit days; SimPy 미도입 |
 | 12 | Re-rating | ~6k | ~4k | ~324k | rate_all 재사용 + knobs 강제 + member map |
+| 13 | Comparison | ~9k | ~6k | ~339k | KPI 7종, per-shipment delta, gate 마스킹 |
