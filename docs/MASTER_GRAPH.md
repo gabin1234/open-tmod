@@ -60,5 +60,6 @@ CSV 원본 데이터에서 시작해 Baseline 재현 → Scenario 최적화 → 
 | NN | 상태 | 승인일 | tag |
 |----|------|--------|-----|
 | 01 | FROZEN | 2026-09-10 | node-01 |
-| 02 | REVIEW | — | — |
-| 03–14 | PENDING | — | — |
+| 02 | FROZEN | 2026-09-10 | node-02 |
+| 03 | REVIEW | — | — |
+| 04–14 | PENDING | — | — |
