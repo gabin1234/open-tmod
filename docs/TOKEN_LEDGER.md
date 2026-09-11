@@ -15,3 +15,4 @@
 | 08 | Baseline | ~22k | ~14k | ~268k | pipeline 01-07, gap, calibrate; scripts/make_sample.py, data/sample/ |
 | 09 | Scenario | ~9k | ~6k | ~283k | CarrierSwitch 적용, ConsolidationWindow pending, JSON 로드 |
 | 10 | Optimization | ~14k | ~9k | ~306k | CP-SAT bin packing consolidation; +ortools |
+| 11 | Simulation (stub) | ~5k | ~3k | ~314k | deterministic transit days; SimPy 미도입 |
