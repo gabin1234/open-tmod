@@ -12,3 +12,4 @@
 | 05 | Geocoding | ~14k | ~9k | ~195k | ZCTA centroid provider + cache; data/zip_centroids.csv 945KB |
 | 06 | Road Routing | ~12k | ~8k | ~215k | Provider protocol: Haversine(knobs), Valhalla(HTTP), matrix cache |
 | 07 | Rating | ~10k | ~7k | ~232k | per_mile/per_cwt/flat, min_charge, fuel_pct |
+| 08 | Baseline | ~22k | ~14k | ~268k | pipeline 01-07, gap, calibrate; scripts/make_sample.py, data/sample/ |

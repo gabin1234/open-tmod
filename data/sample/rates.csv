@@ -1,0 +1,4 @@
+carrier_id,rate_type,rate,min_charge,fuel_pct,mode
+C1,per_mile,2.1,,22,TL
+C2,per_cwt,18.5,95,18,LTL
+C3,flat,450,,,
