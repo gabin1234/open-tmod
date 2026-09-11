@@ -124,7 +124,7 @@ def test_refresh_job_and_health(tmp_path):
 
 
 def test_token_auth(tmp_path):
-    with TestClient(create_app(tmp_path, tmp_path / "runs", token="s3cret")) as c:
+    with TestClient(create_app(tmp_path, tmp_path / "runs", token="s3cret"), client=("8.8.8.8", 5555)) as c:
         assert c.get("/api/health").status_code == 401
         assert c.get("/api/health", headers={"Authorization": "Bearer s3cret"}).status_code == 200
         assert c.get("/api/health?token=s3cret").status_code == 200
@@ -133,3 +133,9 @@ def test_token_auth(tmp_path):
         assert c.get("/api/health").status_code == 200  # cookie kept by client
         c.cookies.clear()
         assert c.get("/api/health", headers={"Authorization": "Bearer nope"}).status_code == 401
+
+
+def test_lan_clients_skip_token(tmp_path):
+    with TestClient(create_app(tmp_path, tmp_path / "runs", token="s3cret"), client=("192.168.1.20", 5555)) as c:
+        assert c.get("/api/health").status_code == 200
+        assert c.get("/api/health", headers={"cf-connecting-ip": "8.8.8.8"}).status_code == 401  # via tunnel -> token

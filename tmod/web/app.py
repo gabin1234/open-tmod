@@ -1,6 +1,7 @@
 """W01: FastAPI app. Run: uv run uvicorn tmod.web.app:app --host 0.0.0.0 --port 8080"""
 from __future__ import annotations
 
+import ipaddress
 import os
 import secrets
 import urllib.request
@@ -62,6 +63,14 @@ def create_app(data_dir: Path = DATA_DIR, runs_dir: Path = RUNS_DIR, extractor=d
     if token:
         @app.middleware("http")
         async def require_token(request: Request, call_next):
+            # Same-LAN clients (private IP, not via the Cloudflare tunnel) skip the token; tunnel traffic always needs it.
+            client = request.client.host if request.client else ""
+            try:
+                private = ipaddress.ip_address(client).is_private and "cf-connecting-ip" not in request.headers
+            except ValueError:
+                private = False
+            if private:
+                return await call_next(request)
             q = request.query_params.get("token")
             hdr = request.headers.get("authorization", "")
             ok = bool(q and secrets.compare_digest(q, token)) or (hdr.startswith("Bearer ") and secrets.compare_digest(hdr[7:], token)) \
