@@ -6,7 +6,7 @@ services:
       POSTGRES_DB: tmod
       POSTGRES_USER: tmod
       POSTGRES_PASSWORD: tmod
-    ports: ["5433:5432"]
+    ports: ["5434:5432"]
     volumes: ["tmod_pg:/var/lib/postgresql/data"]
     healthcheck: {test: ["CMD-SHELL", "pg_isready -U tmod"], interval: 5s, timeout: 3s, retries: 20}
   # osrm: added in P03 (Georgia OSM, car/truck profile)

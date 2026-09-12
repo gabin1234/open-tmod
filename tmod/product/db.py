@@ -10,7 +10,7 @@ import psycopg
 ROOT = Path(__file__).resolve().parent.parent.parent
 DDL = ROOT / "db" / "ddl" / "001_schema.sql"
 SEED = ROOT / "db" / "seed" / "002_sample.sql"
-DEFAULT_DSN = "postgresql://tmod:tmod@localhost:5433/tmod"
+DEFAULT_DSN = "postgresql://tmod:tmod@localhost:5434/tmod"
 
 
 def dsn() -> str:

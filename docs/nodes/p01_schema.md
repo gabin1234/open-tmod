@@ -24,10 +24,10 @@ ENUM: `shipment_kind`(DELIVERY, PICKUP, PICKUP_DELIVERY), `day_of_week`, `solver
 
 ## Interface
 ```
-db/docker-compose.yml        postgres:16, port 5433, volume, POSTGRES_DB=tmod
+db/docker-compose.yml        postgres:16, port 5434, volume, POSTGRES_DB=tmod
 db/ddl/001_schema.sql        idempotent (DROP SCHEMA tmod CASCADE 옵션 주석), search_path tmod
 db/seed/002_sample.sql       마스터·제약·목적·시나리오 샘플
-uv run python -m tmod.product.db init [--seed]   DSN env TMOD_PG_DSN (기본 postgresql://tmod:tmod@localhost:5433/tmod)
+uv run python -m tmod.product.db init [--seed]   DSN env TMOD_PG_DSN (기본 postgresql://tmod:tmod@localhost:5434/tmod)
 ```
 
 ## 승인 기준 (테스트, docker 없으면 skip)
