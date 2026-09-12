@@ -39,3 +39,4 @@
 | P07 | Phase 2 pickup & delivery | ~16k | ~11k | ~1.19M | model/solve pairs, ETL pickup_location, stop_kind |
 | P08 | Phase 2 multiple depot | ~10k | ~8k | ~1.21M | per-vehicle depots via RoutingIndexManager starts/ends |
 | P09 | Phase 3 dynamic traffic + profile + priority | ~22k | ~14k | ~1.26M | traffic_profile, iterative re-timing, priority penalty; test hang fix (idle-in-transaction) |
+| P10 | historical traffic_profile from Atlanta 1Y | ~14k | ~9k | ~1.28M | scripts/traffic_profile_from_history.py, tmod/product/history.py |

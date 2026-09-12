@@ -110,3 +110,4 @@ CSV 원본 데이터에서 시작해 Baseline 재현 → Scenario 최적화 → 
 | P07 Phase 2 Pickup & Delivery | FROZEN | 2026-09-12 | prod-07 |
 | P08 Phase 2 Multiple Depot | FROZEN | 2026-09-12 | prod-08, product-v0.2 |
 | P09 Phase 3 Dynamic Traffic · Profile · Priority | FROZEN | 2026-09-12 | prod-09, product-v0.3 |
+| P10 Historical traffic_profile | REVIEW | — | — |
