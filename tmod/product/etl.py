@@ -111,6 +111,7 @@ def map_row(row: dict, mappings: list[Mapping]) -> dict[str, dict]:
 
 @dataclass
 class EtlReport:
+    batch: str | None = None
     rows: int = 0
     shipments: int = 0
     locations: int = 0
@@ -131,14 +132,15 @@ def _upsert(con, table: str, key: str, values: dict) -> int:
     return con.execute(sql, [values[c] for c in cols]).fetchone()[0]
 
 
-def run_etl(con: psycopg.Connection, system_code: str, rows: Iterable[dict], geocoder=None) -> EtlReport:
+def run_etl(con: psycopg.Connection, system_code: str, rows: Iterable[dict], geocoder=None, batch: str | None = None) -> EtlReport:
+    """batch: import batch id stored on every shipment (e.g. 'xlsx:file.xlsx:2026-09-12T10:00')."""
     mappings = load_mappings(con, system_code)
     sysid = con.execute("SELECT source_system_id FROM source_system WHERE system_code=%s", (system_code,)).fetchone()
     if not sysid:
         raise ValueError(f"unknown source_system {system_code}")
     sysid = sysid[0]
     geocoder = geocoder or ZipCentroidGeocoder()
-    rep = EtlReport()
+    rep = EtlReport(batch=batch)
     loc_ids: dict[str, int] = {}
     cust_ids: dict[str, int] = {}
     for row in rows:
@@ -183,6 +185,8 @@ def run_etl(con: psycopg.Connection, system_code: str, rows: Iterable[dict], geo
                 rep.customers += 1
             sh["customer_id"] = cust_ids[cust["customer_code"]]
         sh["source_system_id"] = sysid
+        if batch:
+            sh["source_batch"] = batch
         sh["source_snapshot"] = json.dumps({str(k): (v.isoformat() if isinstance(v, (date, datetime)) else v) for k, v in row.items()}, default=str)
         cols = list(sh)
         con.execute(f"INSERT INTO shipment ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))}) "

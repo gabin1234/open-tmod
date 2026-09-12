@@ -84,10 +84,28 @@ async function openScenario(code) {
          <div class="card"><h3>Vehicles (${s.vehicles.length})</h3>${veh}</div>
          <div class="card"><h3>Road adjustments</h3>${adj}</div></div>
    </div>
+   <div class="card"><h3>Shipments in scenario (<span id="e-shcount">${s.shipment_count}</span>)</h3>
+    <div class="row" style="align-items:end;margin-bottom:6px"><label>add by date<input id="e-add-date" type="date" value="${s.plan_date}"></label><button class="btn" id="e-add-date-btn">Add date</button>
+     <label>add by import batch<select id="e-add-batch"></select></label><button class="btn" id="e-add-batch-btn">Add batch</button><button class="btn danger" id="e-clear-btn">Remove all</button><span id="e-sh-msg" class="muted"></span></div>
+    <div class="scroll" style="max-height:32vh"><table id="e-shipments"><thead><tr><th>ref</th><th>date</th><th>kind</th><th>customer</th><th>zip</th><th class="num">lb</th><th class="num">svc min</th><th>window</th><th>batch</th><th></th></tr></thead><tbody></tbody></table></div></div>
    <div class="card"><h3>Runs</h3><table><thead><tr><th>run</th><th>status</th><th class="num">veh</th><th class="num">mi</th><th class="num">route min</th><th class="num">cost</th><th>at</th></tr></thead><tbody id="e-runs">${runs}</tbody></table></div>`;
+  loadScenarioShipments(code);
   $("e-save").onclick = saveScenario; $("e-run").onclick = runScenario; $("e-copy").onclick = copyScenario; $("e-del").onclick = deleteScenario; $("e-populate").onclick = async () => { const r = await api(`/api/v2/scenarios/${code}/populate`, {method: "POST"}); $("e-msg").textContent = `added ${r.added}`; openScenario(code); };
   $("e-runs").querySelectorAll("tr[data-run]").forEach(tr => tr.onclick = () => { show("result"); loadRunList().then(() => { $("run-sel").value = tr.dataset.run; loadRun(); }); });
   $("sc-detail").querySelectorAll("input[data-a]").forEach(cb => cb.onchange = () => api(`/api/v2/scenarios/${code}/adjustments/${cb.dataset.a}?enabled=${cb.checked}`, {method: "POST"}));
+}
+
+async function loadScenarioShipments(code) {
+  const [rows, batches] = await Promise.all([api(`/api/v2/scenarios/${encodeURIComponent(code)}/shipments`), api("/api/v2/shipments/batches")]);
+  $("e-shcount").textContent = rows.length;
+  $("e-add-batch").innerHTML = batches.map(b => `<option value="${b.batch}">${b.batch} (${b.n})</option>`).join("") || '<option value="">(no batches)</option>';
+  $("e-shipments").querySelector("tbody").innerHTML = rows.map(s => `<tr><td>${s.source_ref}</td><td>${s.requested_date}</td><td>${s.kind === "DELIVERY" ? "" : s.kind}</td><td>${s.customer_name || ""}</td><td>${s.postal_code || ""}</td><td class="num">${fmt(s.weight_lb)}</td><td class="num">${fmt(s.service_s / 60)}</td><td>${s.window_start ? hm(s.window_start) + "–" + hm(s.window_end) : ""}</td><td class="muted">${(s.source_batch || "").split(":").slice(0, 2).join(":")}</td><td><button class="btn danger" data-rm="${s.shipment_id}" style="padding:0 6px;font-size:11px">✕</button></td></tr>`).join("") || '<tr><td colspan="10" class="muted">no shipments — add by date or batch</td></tr>';
+  const msg = t => { $("e-sh-msg").textContent = t; };
+  const add = async body => { try { const r = await J(`/api/v2/scenarios/${encodeURIComponent(code)}/shipments`, "POST", body); msg(`added ${r.added} (total ${r.total})`); loadScenarioShipments(code); loadScenarios(); } catch (e) { $("e-sh-msg").innerHTML = `<span class="err">${e.message}</span>`; } };
+  $("e-add-date-btn").onclick = () => add({date: $("e-add-date").value});
+  $("e-add-batch-btn").onclick = () => $("e-add-batch").value ? add({batch: $("e-add-batch").value}) : msg("no batch selected");
+  $("e-clear-btn").onclick = async () => { if (!confirm("remove all shipments from this scenario?")) return; await api(`/api/v2/scenarios/${encodeURIComponent(code)}/shipments`, {method: "DELETE"}); loadScenarioShipments(code); loadScenarios(); };
+  $("e-shipments").querySelectorAll("[data-rm]").forEach(b => b.onclick = async () => { await api(`/api/v2/scenarios/${encodeURIComponent(code)}/shipments/${b.dataset.rm}`, {method: "DELETE"}); loadScenarioShipments(code); loadScenarios(); });
 }
 
 function collectScenarioEdits() {
@@ -198,20 +216,39 @@ function showSeq(v) {
 
 // ---------- shipments ----------
 async function loadShipmentDates() {
-  const d = await api("/api/v2/shipments/dates");
-  $("sh-date").innerHTML = d.map(x => `<option value="${x.requested_date}">${x.requested_date} (${x.n})</option>`).join("");
-  $("sh-date").onchange = loadShipments; $("sh-upload").onclick = uploadShipments; $("sh-refresh").onclick = refreshShipments;
-  if (d.length) loadShipments();
+  const [d, b] = await Promise.all([api("/api/v2/shipments/dates"), api("/api/v2/shipments/batches")]);
+  $("sh-date").innerHTML = '<option value="">(any date)</option>' + d.map(x => `<option value="${x.requested_date}">${x.requested_date} (${x.n})</option>`).join("");
+  $("sh-batch").innerHTML = '<option value="">(all)</option>' + b.map(x => `<option value="${x.batch}">${x.batch} · ${x.n} shpm · ${x.date_from}${x.date_to !== x.date_from ? "…" + x.date_to : ""}</option>`).join("");
+  $("sh-date").onchange = loadShipments; $("sh-batch").onchange = loadShipments; $("sh-upload").onclick = uploadShipments; $("sh-refresh").onclick = refreshShipments; $("sh-mk-btn").onclick = createScenarioFromUpload;
+  if (d.length) { if (!$("sh-date").value && d.length) $("sh-date").value = d[d.length - 1].requested_date; loadShipments(); }
 }
 async function loadShipments() {
-  const rows = await api(`/api/v2/shipments?date=${$("sh-date").value}&limit=1000`);
+  const q = [$("sh-date").value ? `date=${$("sh-date").value}` : "", $("sh-batch").value ? `batch=${encodeURIComponent($("sh-batch").value)}` : ""].filter(Boolean).join("&");
+  const rows = await api(`/api/v2/shipments?${q}&limit=1000`);
   $("sh-list").querySelector("tbody").innerHTML = rows.map(s => `<tr><td>${s.source_ref}</td><td>${s.order_ref || ""}</td><td>${s.kind === "DELIVERY" ? "" : s.kind + (s.pickup_postal_code ? " from " + s.pickup_postal_code : "")}</td><td>${s.customer_name || s.customer_code || ""}</td><td>${s.address_line || ""}</td><td>${s.postal_code || ""}</td><td class="num">${fmt(s.weight_lb)}</td><td class="num">${fmt(s.volume_cuft, 1)}</td><td class="num">${fmt(s.service_s / 60)}</td><td>${s.window_start ? hm(s.window_start) + "–" + hm(s.window_end) : ""}</td><td class="num">${s.priority ?? ""}</td><td>${s.optional_flag ? "opt" : ""}</td></tr>`).join("");
 }
 async function uploadShipments() {
   const f = $("sh-file").files[0]; if (!f) { $("sh-msg").innerHTML = '<span class="err">choose an .xlsx file first</span>'; return; }
   const fd = new FormData(); fd.append("file", f);
-  try { const r = await api("/api/v2/shipments/upload", {method: "POST", body: fd}); $("sh-msg").textContent = `ok: ${r.shipments} shipments, ${r.locations} locations, skipped ${JSON.stringify(r.skipped)}`; loadShipmentDates(); }
-  catch (e) { $("sh-msg").innerHTML = `<span class="err">${e.message}</span>`; }
+  try {
+    const r = await api("/api/v2/shipments/upload", {method: "POST", body: fd});
+    $("sh-msg").textContent = `ok: ${r.shipments} shipments, ${r.locations} locations, dates ${r.dates.map(x => x.date + "(" + x.n + ")").join(", ")}${Object.keys(r.skipped).length ? " · skipped " + JSON.stringify(r.skipped) : ""}`;
+    state.lastBatch = r.batch;
+    $("sh-mk-code").value = "SC-" + (r.dates[0] ? r.dates[0].date : "UPLOAD") + "-" + f.name.replace(/\.xlsx$/i, "").replace(/[^A-Za-z0-9]+/g, "-").slice(0, 20).toUpperCase();
+    $("sh-mk").style.display = ""; $("sh-mk-msg").textContent = "";
+    await loadShipmentDates(); $("sh-batch").value = r.batch; $("sh-date").value = ""; loadShipments();
+  } catch (e) { $("sh-msg").innerHTML = `<span class="err">${e.message}</span>`; }
+}
+async function createScenarioFromUpload() {
+  const batch = state.lastBatch || $("sh-batch").value;
+  if (!batch) { $("sh-mk-msg").innerHTML = '<span class="err">upload a file or pick a batch first</span>'; return; }
+  const code = $("sh-mk-code").value.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,60}$/.test(code)) { $("sh-mk-msg").innerHTML = '<span class="err">scenario code: letters, digits, . _ -</span>'; return; }
+  try {
+    const s = await J("/api/v2/scenarios", "POST", {code, name: code, batch, depot_code: $("sc-depot").value, provider: "VALHALLA", time_limit_s: 30});
+    $("sh-mk-msg").textContent = `created ${s.scenario_code} with ${s.shipment_count} shipments (plan date ${s.plan_date})`;
+    await loadScenarios(); show("scenarios"); openScenario(s.scenario_code);
+  } catch (e) { $("sh-mk-msg").innerHTML = `<span class="err">${e.message}</span>`; }
 }
 async function refreshShipments() {
   const j = await api("/api/v2/shipments/refresh", {method: "POST"});

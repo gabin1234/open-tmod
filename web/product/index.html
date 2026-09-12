@@ -52,8 +52,10 @@ pre{font-size:12px;background:var(--bg);padding:8px;border-radius:4px;overflow:a
 </div></section>
 
 <section id="v-shipments" class="view">
- <div class="row" style="align-items:end;margin-bottom:8px;max-width:900px"><label>date<select id="sh-date"></select></label>
-  <label>upload xlsx<input type="file" id="sh-file" accept=".xlsx"></label><button class="btn" id="sh-upload">Upload</button><button class="btn" id="sh-refresh">Refresh from Blue Yonder</button><span id="sh-msg" class="muted"></span></div>
+ <div class="row" style="align-items:end;margin-bottom:8px;max-width:1100px"><label>date<select id="sh-date"></select></label><label>import batch<select id="sh-batch"><option value="">(all)</option></select></label>
+  <label>upload xlsx<input type="file" id="sh-file" accept=".xlsx"></label><button class="btn" id="sh-upload">Upload</button><button class="btn" id="sh-refresh">Refresh from Blue Yonder</button></div>
+ <div class="row" style="align-items:center;margin-bottom:8px;max-width:1100px"><span id="sh-msg" class="muted"></span>
+  <span id="sh-mk" style="display:none"><input id="sh-mk-code" placeholder="scenario code" style="width:220px;display:inline-block"> <button class="btn primary" id="sh-mk-btn">Create scenario from this upload</button> <span id="sh-mk-msg" class="muted"></span></span></div>
  <div class="scroll"><table id="sh-list"><thead><tr><th>ref</th><th>order</th><th>kind</th><th>customer</th><th>address</th><th>zip</th><th class="num">lb</th><th class="num">cuft</th><th class="num">svc min</th><th>window</th><th class="num">prio</th><th>opt</th></tr></thead><tbody></tbody></table></div>
 </section>
 

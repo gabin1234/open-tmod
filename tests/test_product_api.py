@@ -137,6 +137,34 @@ def test_scenario_validation(client):
     assert client.delete("/api/v2/scenarios/OK-1").status_code == 204 and client.delete("/api/v2/scenarios/OK-1").status_code == 404
 
 
+def test_batch_scenario_flow(client, tmp_path):
+    import openpyxl
+    from datetime import datetime
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Shipments"
+    ws.append(["shipment_id", "delivery_date", "address", "zip", "latitude", "longitude", "weight_lb", "service_minutes"])
+    ws.append(["B1", datetime(2026, 9, 22), "1 A St", "30309", 33.79, -84.39, 100, 20])
+    ws.append(["B2", datetime(2026, 9, 22), "2 B St", "30310", 33.78, -84.40, 100, 20])
+    ws.append(["B3", datetime(2026, 9, 23), "3 C St", "30032", 33.70, -84.30, 100, 20])
+    p = tmp_path / "b.xlsx"; wb.save(p)
+    up = client.post("/api/v2/shipments/upload", files={"file": ("batch test.xlsx", open(p, "rb"), "application/octet-stream")}).json()
+    assert up["shipments"] == 3 and up["batch"].startswith("xlsx:batch test.xlsx:") and up["dates"][0] == {"date": "2026-09-22", "n": 2}
+    b = client.get("/api/v2/shipments/batches").json()
+    assert b[0]["batch"] == up["batch"] and b[0]["n"] == 3
+    assert len(client.get(f"/api/v2/shipments?batch={up['batch']}").json()) == 3
+    s = client.post("/api/v2/scenarios", json={"code": "SC-B", "name": "b", "batch": up["batch"], "depot_code": "LPHB-30260", "provider": "MANUAL"}).json()
+    assert s["shipment_count"] == 3 and s["plan_date"] == "2026-09-22" and s["populated"] == 3
+    lst = client.get("/api/v2/scenarios/SC-B/shipments").json()
+    assert {x["source_ref"] for x in lst} == {"B1", "B2", "B3"}
+    assert client.delete(f"/api/v2/scenarios/SC-B/shipments/{lst[0]['shipment_id']}").status_code == 204
+    assert client.get("/api/v2/scenarios/SC-B").json()["shipment_count"] == 2
+    r = client.post("/api/v2/scenarios/SC-B/shipments", json={"batch": up["batch"]}).json()
+    assert r == {"added": 1, "total": 3}
+    r = client.post("/api/v2/scenarios/SC-B/shipments", json={"date": "2026-09-20"}).json()   # the fixture's 6 shipments
+    assert r["added"] == 6 and r["total"] == 9
+    assert client.delete("/api/v2/scenarios/SC-B/shipments").status_code == 204 and client.get("/api/v2/scenarios/SC-B").json()["shipment_count"] == 0
+    assert client.post("/api/v2/scenarios", json={"code": "SC-C", "name": "c", "depot_code": "LPHB-30260"}).status_code == 422   # neither date nor batch
+
+
 def test_no_db_returns_503(tmp_path, monkeypatch):
     monkeypatch.setenv("TMOD_PG_DSN", "postgresql://x:x@localhost:1/none")
     with TestClient(create_app(tmp_path, tmp_path / "runs")) as c:

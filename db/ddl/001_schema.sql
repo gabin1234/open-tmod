@@ -432,3 +432,7 @@ CREATE TABLE IF NOT EXISTS traffic_profile (
   created_at timestamptz NOT NULL DEFAULT now(), created_by text NOT NULL DEFAULT current_user,
   updated_at timestamptz NOT NULL DEFAULT now(), updated_by text NOT NULL DEFAULT current_user
 );
+
+-- v2.1 (P13): import batch id on shipments (xlsx upload / Blue Yonder refresh)
+ALTER TABLE shipment ADD COLUMN IF NOT EXISTS source_batch text;
+CREATE INDEX IF NOT EXISTS ix_shipment_batch ON shipment (source_batch);

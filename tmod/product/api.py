@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import tempfile
+from datetime import datetime
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -15,7 +16,7 @@ from typing import Any
 import psycopg
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from psycopg.rows import dict_row
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 CODE_RE = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,60}$"
 
@@ -74,7 +75,8 @@ class Jobs:
 class ScenarioIn(BaseModel):
     code: str = Field(pattern=CODE_RE, description="letters, digits, . _ - ; no spaces")
     name: str = Field(min_length=1, max_length=120)
-    plan_date: date
+    plan_date: date | None = None       # None with batch -> most common requested_date in the batch
+    batch: str | None = None            # include every shipment of this import batch (regardless of date)
 
     @field_validator("code", "name", mode="before")
     @classmethod
@@ -94,6 +96,13 @@ class ScenarioUpdate(BaseModel):
     constraints: dict[str, dict] | None = None      # code -> {"enabled": bool, "params": {...}}
     weights: dict[str, float] | None = None         # objective_code -> pct
     vehicles: list[str] | None = None               # vehicle codes
+
+
+class ScenarioShipmentsIn(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    shipment_ids: list[int] | None = None
+    batch: str | None = None
+    requested_date: date | None = Field(None, alias="date")   # a field literally named `date` shadows the type under postponed annotations
 
 
 class AdjustmentIn(BaseModel):
@@ -151,7 +160,7 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
 
     # ---------- shipments ----------
     @r.get("/shipments")
-    def shipments(date_: date | None = Query(None, alias="date"), limit: int = 500):
+    def shipments(date_: date | None = Query(None, alias="date"), batch: str | None = None, limit: int = 500):
         with _conn() as c:
             q = """SELECT sh.shipment_id, sh.source_ref, sh.order_ref, sh.kind, pl.location_code AS pickup_location_code, pl.postal_code AS pickup_postal_code, sh.requested_date, sh.window_start, sh.window_end, sh.service_s, sh.weight_lb, sh.volume_cuft,
                           sh.pieces, sh.priority, sh.optional_flag, l.location_code, l.address_line, l.city, l.postal_code, l.latitude, l.longitude, cu.customer_code, cu.name AS customer_name
@@ -161,12 +170,21 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
             if date_:
                 q += " AND sh.requested_date=%s"
                 args.append(date_)
+            if batch:
+                q += " AND sh.source_batch=%s"
+                args.append(batch)
             return _json(c.execute(q + " ORDER BY sh.requested_date, sh.shipment_id LIMIT %s", args + [limit]).fetchall())
 
     @r.get("/shipments/dates")
     def shipment_dates():
         with _conn() as c:
             return _json(c.execute("SELECT requested_date, count(*) AS n FROM shipment WHERE active_flag GROUP BY 1 ORDER BY 1").fetchall())
+
+    @r.get("/shipments/batches")
+    def shipment_batches():
+        with _conn() as c:
+            return _json(c.execute("""SELECT source_batch AS batch, count(*) AS n, min(requested_date) AS date_from, max(requested_date) AS date_to, max(created_at) AS imported_at
+                                      FROM shipment WHERE active_flag AND source_batch IS NOT NULL GROUP BY 1 ORDER BY max(created_at) DESC""").fetchall())
 
     @r.post("/shipments/upload", status_code=201)
     async def shipments_upload(file: UploadFile = File(...), system: str = Form("XLSX")):
@@ -175,10 +193,13 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
             tmp.write(await file.read())
         try:
+            batch = f"xlsx:{Path(file.filename).name}:{datetime.now():%Y-%m-%dT%H:%M}"
             with _conn(plain=True) as c:   # ETL unpacks rows positionally
                 c.execute(SEED.parent.joinpath("003_mapping_xlsx.sql").read_text())
-                rep = run_etl(c, system, load_rows_xlsx(tmp.name))
-                return {"rows": rep.rows, "shipments": rep.shipments, "locations": rep.locations, "customers": rep.customers, "skipped": dict(rep.skipped)}
+                rep = run_etl(c, system, load_rows_xlsx(tmp.name), batch=batch)
+                dates = c.execute("SELECT requested_date, count(*) FROM shipment WHERE source_batch=%s GROUP BY 1 ORDER BY 2 DESC, 1", (batch,)).fetchall()
+                return {"batch": batch, "rows": rep.rows, "shipments": rep.shipments, "locations": rep.locations, "customers": rep.customers, "skipped": dict(rep.skipped),
+                        "dates": [{"date": str(d), "n": n} for d, n in dates]}
         finally:
             Path(tmp.name).unlink(missing_ok=True)
 
@@ -187,9 +208,10 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
         from tmod.product.etl import load_rows_by
 
         def job():
+            batch = f"by:{hub}:{crt_by or 'all'}:{datetime.now():%Y-%m-%dT%H:%M}"
             with _conn(plain=True) as c:
-                rep = run_etl(c, "BLUE_YONDER", load_rows_by(hub, None if crt_by in (None, "all") else crt_by))
-                return {"rows": rep.rows, "shipments": rep.shipments, "skipped": dict(rep.skipped)}
+                rep = run_etl(c, "BLUE_YONDER", load_rows_by(hub, None if crt_by in (None, "all") else crt_by), batch=batch)
+                return {"batch": batch, "rows": rep.rows, "shipments": rep.shipments, "skipped": dict(rep.skipped)}
         return {"job_id": jobs.submit(job)}
 
     # ---------- scenarios ----------
@@ -223,15 +245,26 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
             d = c.execute("SELECT depot_id FROM depot WHERE depot_code=%s", (body.depot_code,)).fetchone()
             if not d:
                 raise HTTPException(404, "depot not found")
+            plan_date = body.plan_date
+            if plan_date is None:
+                if not body.batch:
+                    raise HTTPException(422, "plan_date or batch required")
+                row = c.execute("SELECT requested_date FROM shipment WHERE source_batch=%s AND active_flag GROUP BY 1 ORDER BY count(*) DESC, 1 LIMIT 1", (body.batch,)).fetchone()
+                if not row:
+                    raise HTTPException(404, "batch has no shipments")
+                plan_date = row["requested_date"]
             try:
                 sid = c.execute("INSERT INTO scenario (scenario_code, name, description, plan_date, depot_id, distance_provider, time_limit_s) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING scenario_id",
-                                (body.code, body.name, body.description, body.plan_date, d["depot_id"], body.provider, body.time_limit_s)).fetchone()["scenario_id"]
+                                (body.code, body.name, body.description, plan_date, d["depot_id"], body.provider, body.time_limit_s)).fetchone()["scenario_id"]
             except psycopg.errors.UniqueViolation:
                 raise HTTPException(409, "scenario code exists")
             c.execute("INSERT INTO scenario_vehicle (scenario_id, vehicle_id) SELECT %s, vehicle_id FROM vehicle WHERE active_flag AND depot_id=%s", (sid, d["depot_id"]))
             c.execute("INSERT INTO scenario_constraint (scenario_id, constraint_code, enabled_flag, params) SELECT %s, constraint_code, phase=1, default_params FROM constraint_def WHERE active_flag", (sid,))
             c.execute("INSERT INTO scenario_objective_weight VALUES (%s,'COST',50),(%s,'TRAVEL_TIME',30),(%s,'VEHICLE_COUNT',20)", (sid, sid, sid))
-            n = populate_scenario(c, sid)
+            if body.batch:
+                n = c.execute("INSERT INTO scenario_shipment (scenario_id, shipment_id) SELECT %s, shipment_id FROM shipment WHERE source_batch=%s AND active_flag ON CONFLICT DO NOTHING", (sid, body.batch)).rowcount
+            else:
+                n = populate_scenario(c, sid)
             c.commit()
             out = _scenario(c, body.code)
             out["populated"] = n
@@ -301,6 +334,47 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
         with _conn() as c:
             if c.execute("UPDATE scenario SET active_flag=false, status='ARCHIVED' WHERE scenario_code=%s AND active_flag", (code,)).rowcount == 0:
                 raise HTTPException(404, "scenario not found")
+            c.commit()
+
+    @r.get("/scenarios/{code}/shipments")
+    def scenario_shipments(code: str):
+        with _conn() as c:
+            s = c.execute("SELECT scenario_id FROM scenario WHERE scenario_code=%s", (code,)).fetchone()
+            if not s:
+                raise HTTPException(404, "scenario not found")
+            return _json(c.execute("""SELECT sh.shipment_id, sh.source_ref, sh.kind, sh.requested_date, sh.window_start, sh.window_end, sh.service_s, sh.weight_lb, sh.volume_cuft,
+                                             sh.priority, sh.optional_flag, sh.source_batch, l.postal_code, l.address_line, cu.name AS customer_name
+                                      FROM scenario_shipment ss JOIN shipment sh USING (shipment_id) JOIN location l ON l.location_id=sh.delivery_location_id
+                                      LEFT JOIN customer cu ON cu.customer_id=sh.customer_id WHERE ss.scenario_id=%s ORDER BY sh.requested_date, sh.source_ref""", (s["scenario_id"],)).fetchall())
+
+    @r.post("/scenarios/{code}/shipments")
+    def scenario_shipments_add(code: str, body: ScenarioShipmentsIn):
+        with _conn() as c:
+            s = c.execute("SELECT scenario_id FROM scenario WHERE scenario_code=%s", (code,)).fetchone()
+            if not s:
+                raise HTTPException(404, "scenario not found")
+            sid, n = s["scenario_id"], 0
+            if body.shipment_ids:
+                n += c.execute("INSERT INTO scenario_shipment (scenario_id, shipment_id) SELECT %s, shipment_id FROM shipment WHERE shipment_id = ANY(%s) AND active_flag ON CONFLICT DO NOTHING", (sid, body.shipment_ids)).rowcount
+            if body.batch:
+                n += c.execute("INSERT INTO scenario_shipment (scenario_id, shipment_id) SELECT %s, shipment_id FROM shipment WHERE source_batch=%s AND active_flag ON CONFLICT DO NOTHING", (sid, body.batch)).rowcount
+            if body.requested_date:
+                n += c.execute("INSERT INTO scenario_shipment (scenario_id, shipment_id) SELECT %s, shipment_id FROM shipment WHERE requested_date=%s AND active_flag ON CONFLICT DO NOTHING", (sid, body.requested_date)).rowcount
+            c.execute("UPDATE scenario SET status='READY' WHERE scenario_id=%s AND status IN ('DRAFT','DONE')", (sid,))
+            c.commit()
+            return {"added": n, "total": c.execute("SELECT count(*) AS n FROM scenario_shipment WHERE scenario_id=%s", (sid,)).fetchone()["n"]}
+
+    @r.delete("/scenarios/{code}/shipments/{shipment_id}", status_code=204)
+    def scenario_shipment_remove(code: str, shipment_id: int):
+        with _conn() as c:
+            if c.execute("DELETE FROM scenario_shipment WHERE shipment_id=%s AND scenario_id=(SELECT scenario_id FROM scenario WHERE scenario_code=%s)", (shipment_id, code)).rowcount == 0:
+                raise HTTPException(404, "not in scenario")
+            c.commit()
+
+    @r.delete("/scenarios/{code}/shipments", status_code=204)
+    def scenario_shipments_clear(code: str):
+        with _conn() as c:
+            c.execute("DELETE FROM scenario_shipment WHERE scenario_id=(SELECT scenario_id FROM scenario WHERE scenario_code=%s)", (code,))
             c.commit()
 
     @r.post("/scenarios/{code}/populate")
