@@ -1,6 +1,6 @@
 # P07 — Phase 2: Pickup & Delivery
 
-상태: REVIEW (승인 대기)
+상태: FROZEN (2026-09-12 승인)
 버전: 1.0 (P04 v1.1, P02 v1.1, P01 v1.2 additive, P05/P06 표시 확장)
 
 ## 범위
