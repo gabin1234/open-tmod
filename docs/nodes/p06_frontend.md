@@ -1,6 +1,6 @@
 # P06 — Product Frontend
 
-상태: REVIEW (승인 대기)
+상태: FROZEN (2026-09-12 승인)
 버전: 1.0
 `/product` 단일 페이지 (`web/product/index.html` + `app.js`), 빌드 없음, Leaflet CDN, `/api/v2`만 호출. 기존 `/`(LMD POC 화면)은 그대로.
 
