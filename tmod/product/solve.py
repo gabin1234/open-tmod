@@ -198,6 +198,10 @@ def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProv
                 if cur == prev:
                     break
                 prev = cur
+        retime = sol is not None and "DYNAMIC_TRAFFIC" in data.constraints
+        if retime:   # final legs timed at their actual departures (the last matrix may predate the last sequence change)
+            deps = _departures(data, mgr, rt, sol, tdim, D)
+            dist, dur = matrices(con, data, provider, deps, int(statistics.median(deps.values())) if deps else None)
         if sol is None:
             con.execute("UPDATE optimization_run SET solver_status='INFEASIBLE', end_time=now() WHERE optimization_run_id=%s", (run_id,))
             con.execute("UPDATE scenario SET status='READY' WHERE scenario_id=%s", (data.scenario_id,))
@@ -218,14 +222,19 @@ def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProv
             depot_loc = data.locations[dnode]
             seq, prev_node, v_dist, v_drive, v_service = 0, dnode, 0, 0, 0
             start_s = sol.Value(tdim.CumulVar(idx))
+            clock = start_s
             load = 0.0
             rows.append((run_id, v.vehicle_id, 0, depot_loc, None, midnight + timedelta(seconds=start_s), midnight + timedelta(seconds=start_s), 0, 0, 0, 0, 0, "DEPOT", None))
             idx = sol.Value(rt.NextVar(idx))
             while not rt.IsEnd(idx):
                 node = mgr.IndexToNode(idx)
                 s = data.stops[node - D]
-                arr = sol.Value(tdim.CumulVar(idx))
                 d_prev, t_prev = dist[prev_node][node], dur[prev_node][node]
+                if retime:
+                    arr = max(clock + t_prev, s.window_start_s or 0)
+                    clock = arr + s.service_s
+                else:
+                    arr = sol.Value(tdim.CumulVar(idx))
                 late = max(0, arr - s.window_end_s) if s.window_end_s is not None else 0
                 per = max(1, len(s.shipment_ids))
                 kind = {"PICKUP": "PICKUP", "PICKUP_DELIVERY_P": "PICKUP"}.get(s.kind, "DELIVERY")
@@ -241,8 +250,8 @@ def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProv
                 v_service += s.service_s
                 prev_node = node
                 idx = sol.Value(rt.NextVar(idx))
-            end_s = sol.Value(tdim.CumulVar(idx))
             d_prev, t_prev = dist[prev_node][dnode], dur[prev_node][dnode]
+            end_s = clock + t_prev if retime else sol.Value(tdim.CumulVar(idx))
             v_dist += d_prev
             v_drive += t_prev
             seq += 1
