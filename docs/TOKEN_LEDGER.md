@@ -36,3 +36,4 @@
 | P04 | OR-Tools model builder + solve | ~30k | ~20k | ~1.06M | tmod/product/{model,solve}.py; real 65-shipment run OPTIMAL 20s |
 | P05 | product API /api/v2 | ~24k | ~16k | ~1.10M | tmod/product/api.py mounted in web app |
 | P06 | product frontend /product | ~26k | ~18k | ~1.15M | web/product/{index.html,app.js}; runs?detail=1 lazy geometry |
+| P07 | Phase 2 pickup & delivery | ~16k | ~11k | ~1.19M | model/solve pairs, ETL pickup_location, stop_kind |

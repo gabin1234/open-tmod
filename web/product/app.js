@@ -164,7 +164,7 @@ async function loadRun() {
     const road = v.legs.some(l => l.geometry) ? v.legs.map((l, k) => l.geometry || [pts[k], pts[k + 1]]) : [pts];
     L.polyline(road, {color, weight: 3, opacity: .85}).bindTooltip(`${v.vehicle_code} · ${v.shipments} shipments · ${mi(v.distance_m)} mi`).addTo(state.layer);
     let n = 0;
-    v.stops.forEach(s => { if (!s.shipment_id) return; n++; L.circleMarker([s.latitude, s.longitude], {radius: 9, color, fillColor: "#fff", fillOpacity: 1, weight: 2}).bindTooltip(`${v.vehicle_code} #${n} ${s.source_ref} · ${hm(s.arrival_time)} · ${s.address_line || s.postal_code || ""}`).addTo(state.layer);
+    v.stops.forEach(s => { if (!s.shipment_id) return; n++; L.circleMarker([s.latitude, s.longitude], {radius: 9, color, fillColor: "#fff", fillOpacity: 1, weight: 2}).bindTooltip(`${v.vehicle_code} #${n} ${s.stop_kind === "PICKUP" ? "pickup " : ""}${s.source_ref} · ${hm(s.arrival_time)} · ${s.address_line || s.postal_code || ""}`).addTo(state.layer);
       L.marker([s.latitude, s.longitude], {icon: L.divIcon({className: "", html: `<div style="font:bold 10px system-ui;color:${color};text-align:center;width:18px;margin-left:-9px;margin-top:-6px">${n}</div>`})}).addTo(state.layer); });
   });
   if (state.layer.getLayers().length) state.map.fitBounds(state.layer.getBounds().pad(0.1));
@@ -175,7 +175,7 @@ async function loadRun() {
 }
 
 function showSeq(v) {
-  $("run-seq").querySelector("tbody").innerHTML = v.stops.map(s => `<tr><td>${s.route_sequence}</td><td>${s.shipment_id ? s.source_ref : "depot"}<div class="muted">${s.address_line || s.location_code}</div></td><td>${hm(s.arrival_time)}</td><td>${hm(s.departure_time)}</td><td class="num">${fmt(s.service_s / 60)}</td><td class="num">${mi(s.distance_from_previous_m)}</td><td class="num">${s.late_s ? fmt(s.late_s / 60) : ""}</td></tr>`).join("");
+  $("run-seq").querySelector("tbody").innerHTML = v.stops.map(s => `<tr><td>${s.route_sequence}</td><td>${s.shipment_id ? (s.stop_kind === "PICKUP" ? "▲ " : "") + s.source_ref : "depot"}<div class="muted">${s.address_line || s.location_code}${s.load_after_kg != null && s.stop_kind !== "DELIVERY" ? " · load " + fmt(s.load_after_kg) + " kg" : ""}</div></td><td>${hm(s.arrival_time)}</td><td>${hm(s.departure_time)}</td><td class="num">${fmt(s.service_s / 60)}</td><td class="num">${mi(s.distance_from_previous_m)}</td><td class="num">${s.late_s ? fmt(s.late_s / 60) : ""}</td></tr>`).join("");
 }
 
 // ---------- shipments ----------
@@ -187,7 +187,7 @@ async function loadShipmentDates() {
 }
 async function loadShipments() {
   const rows = await api(`/api/v2/shipments?date=${$("sh-date").value}&limit=1000`);
-  $("sh-list").querySelector("tbody").innerHTML = rows.map(s => `<tr><td>${s.source_ref}</td><td>${s.order_ref || ""}</td><td>${s.customer_name || s.customer_code || ""}</td><td>${s.address_line || ""}</td><td>${s.postal_code || ""}</td><td class="num">${fmt(s.weight_kg)}</td><td class="num">${fmt(s.volume_m3, 2)}</td><td class="num">${fmt(s.service_s / 60)}</td><td>${s.window_start ? hm(s.window_start) + "–" + hm(s.window_end) : ""}</td><td class="num">${s.priority ?? ""}</td><td>${s.optional_flag ? "opt" : ""}</td></tr>`).join("");
+  $("sh-list").querySelector("tbody").innerHTML = rows.map(s => `<tr><td>${s.source_ref}</td><td>${s.order_ref || ""}</td><td>${s.kind === "DELIVERY" ? "" : s.kind + (s.pickup_postal_code ? " from " + s.pickup_postal_code : "")}</td><td>${s.customer_name || s.customer_code || ""}</td><td>${s.address_line || ""}</td><td>${s.postal_code || ""}</td><td class="num">${fmt(s.weight_kg)}</td><td class="num">${fmt(s.volume_m3, 2)}</td><td class="num">${fmt(s.service_s / 60)}</td><td>${s.window_start ? hm(s.window_start) + "–" + hm(s.window_end) : ""}</td><td class="num">${s.priority ?? ""}</td><td>${s.optional_flag ? "opt" : ""}</td></tr>`).join("");
 }
 async function uploadShipments() {
   const f = $("sh-file").files[0]; if (!f) { alert("choose an .xlsx"); return; }

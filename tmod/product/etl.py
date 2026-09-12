@@ -144,7 +144,7 @@ def run_etl(con: psycopg.Connection, system_code: str, rows: Iterable[dict], geo
     for row in rows:
         rep.rows += 1
         m = map_row(row, mappings)
-        sh, loc, cust = m.get("shipment", {}), m.get("location", {}), m.get("customer", {})
+        sh, loc, cust, ploc = m.get("shipment", {}), m.get("location", {}), m.get("customer", {}), m.get("pickup_location", {})
         if not sh.get("source_ref"):
             rep.skipped["no_source_ref"] += 1
             continue
@@ -164,6 +164,18 @@ def run_etl(con: psycopg.Connection, system_code: str, rows: Iterable[dict], geo
             loc_ids[code] = _upsert(con, "location", "location_code", loc)
             rep.locations += 1
         sh["delivery_location_id"] = loc_ids[code]
+        if ploc.get("location_code"):
+            pc = ploc["location_code"]
+            if pc not in loc_ids:
+                if (ploc.get("latitude") is None or ploc.get("longitude") is None) and ploc.get("postal_code"):
+                    g = geocoder.geocode(Location(zip=ploc["postal_code"]))
+                    if g:
+                        ploc.update(latitude=g.lat, longitude=g.lon, geocode_source=f"ZCTA:{g.precision}")
+                        rep.geocoded += 1
+                loc_ids[pc] = _upsert(con, "location", "location_code", ploc)
+                rep.locations += 1
+            sh["pickup_location_id"] = loc_ids[pc]
+            sh.setdefault("kind", "PICKUP_DELIVERY")
         if cust.get("customer_code"):
             cust.setdefault("name", cust["customer_code"])
             if cust["customer_code"] not in cust_ids:

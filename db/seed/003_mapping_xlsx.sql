@@ -23,3 +23,14 @@ SELECT ss.source_system_id, m.st, m.sc, m.tt, m.tc, m.rule, m.ord FROM source_sy
   ('Shipments','customer_name','customer','customer_code','slug',20)
 ) m(st,sc,tt,tc,rule,ord) WHERE ss.system_code='XLSX'
 ON CONFLICT DO NOTHING;
+-- P07: pickup & delivery columns (optional in the sheet)
+INSERT INTO source_mapping_master (source_system_id, source_table, source_column, target_table, target_column, transformation_rule, sort_order)
+SELECT ss.source_system_id, m.st, m.sc, m.tt, m.tc, m.rule, m.ord FROM source_system ss, (VALUES
+  ('Shipments','kind','shipment','kind','upper',21),
+  ('Shipments','pickup_address','pickup_location','address_line',NULL,22),
+  ('Shipments','pickup_address','pickup_location','location_code','locid:pickup_zip',23),
+  ('Shipments','pickup_zip','pickup_location','postal_code','zip5',24),
+  ('Shipments','pickup_latitude','pickup_location','latitude','float',25),
+  ('Shipments','pickup_longitude','pickup_location','longitude','float',26)
+) m(st,sc,tt,tc,rule,ord) WHERE ss.system_code='XLSX'
+ON CONFLICT DO NOTHING;

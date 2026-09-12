@@ -95,12 +95,21 @@ def build_and_solve(data: ScenarioData, dist: list[list[int]], dur: list[list[in
             if v.max_distance_m:
                 ddim.SetSpanUpperBoundForVehicle(v.max_distance_m, vi)
 
-    # capacities
+    # capacities (signed: pickups load, P&D deliveries unload)
     for code, attr, cap_attr, scale in (("CAPACITY_WEIGHT", "weight_kg", "capacity_kg", 1000), ("CAPACITY_VOLUME", "volume_m3", "capacity_m3", 1000)):
         if code in C:
-            demand = [0] + [int(round(getattr(s, attr) * scale)) for s in stops]
+            demand = [0] + [int(round(getattr(s, attr) * scale)) * s.demand_sign for s in stops]
             caps = [int(round(getattr(v, cap_attr) * scale)) if getattr(v, cap_attr) else BIG for v in data.vehicles]
             rt.AddDimensionWithVehicleCapacity(rt.RegisterUnaryTransitCallback(lambda a, d=demand: d[mgr.IndexToNode(a)]), 0, caps, True, code)
+    # pickup & delivery pairs: same vehicle, pickup first
+    solver = rt.solver()
+    pick = {s.pair: k for k, s in enumerate(stops, start=1) if s.kind == "PICKUP_DELIVERY_P"}
+    for k, s in enumerate(stops, start=1):
+        if s.kind == "PICKUP_DELIVERY_D" and s.pair in pick:
+            p, d = mgr.NodeToIndex(pick[s.pair]), mgr.NodeToIndex(k)
+            rt.AddPickupAndDelivery(p, d)
+            solver.Add(rt.VehicleVar(p) == rt.VehicleVar(d))
+            solver.Add(tdim.CumulVar(p) <= tdim.CumulVar(d))
     if "WORK_LIMIT" in C:
         work = [0] + [s.service_s for s in stops]
         caps = [v.work_limit_s or BIG for v in data.vehicles]
@@ -160,7 +169,8 @@ def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProv
             used += 1
             seq, prev_node, v_dist, v_drive, v_service = 0, 0, 0, 0, 0
             start_s = sol.Value(tdim.CumulVar(idx))
-            rows.append((run_id, v.vehicle_id, 0, data.depot_location_id, None, midnight + timedelta(seconds=start_s), midnight + timedelta(seconds=start_s), 0, 0, 0, 0, 0))
+            load = 0.0
+            rows.append((run_id, v.vehicle_id, 0, data.depot_location_id, None, midnight + timedelta(seconds=start_s), midnight + timedelta(seconds=start_s), 0, 0, 0, 0, 0, "DEPOT", None))
             idx = sol.Value(rt.NextVar(idx))
             while not rt.IsEnd(idx):
                 node = mgr.IndexToNode(idx)
@@ -168,13 +178,15 @@ def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProv
                 arr = sol.Value(tdim.CumulVar(idx))
                 d_prev, t_prev = dist[prev_node][node], dur[prev_node][node]
                 late = max(0, arr - s.window_end_s) if s.window_end_s is not None else 0
-                wait = max(0, (s.window_start_s or 0) - (arr)) if False else 0
                 per = max(1, len(s.shipment_ids))
+                kind = {"PICKUP": "PICKUP", "PICKUP_DELIVERY_P": "PICKUP"}.get(s.kind, "DELIVERY")
+                load += s.weight_kg * s.demand_sign if s.kind != "DELIVERY" else 0.0
                 for k, shid in enumerate(s.shipment_ids):
                     seq += 1
                     rows.append((run_id, v.vehicle_id, seq, s.location_id, shid, midnight + timedelta(seconds=arr), midnight + timedelta(seconds=arr + s.service_s),
-                                 0, s.service_s // per if k else s.service_s - s.service_s // per * (per - 1), d_prev if k == 0 else 0, t_prev if k == 0 else 0, late))
-                    routed.add(shid)
+                                 0, s.service_s // per if k else s.service_s - s.service_s // per * (per - 1), d_prev if k == 0 else 0, t_prev if k == 0 else 0, late, kind, round(load, 3)))
+                    if s.kind != "PICKUP_DELIVERY_P":
+                        routed.add(shid)
                 v_dist += d_prev
                 v_drive += t_prev
                 v_service += s.service_s
@@ -185,7 +197,7 @@ def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProv
             v_dist += d_prev
             v_drive += t_prev
             seq += 1
-            rows.append((run_id, v.vehicle_id, seq, data.depot_location_id, None, midnight + timedelta(seconds=end_s), midnight + timedelta(seconds=end_s), 0, 0, d_prev, t_prev, 0))
+            rows.append((run_id, v.vehicle_id, seq, data.depot_location_id, None, midnight + timedelta(seconds=end_s), midnight + timedelta(seconds=end_s), 0, 0, d_prev, t_prev, 0, "DEPOT", round(load, 3)))
             route_s = end_s - start_s
             tot_dist += v_dist
             tot_drive += v_drive
@@ -193,8 +205,9 @@ def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProv
             tot_route += route_s
             tot_cost += v.fixed_cost + v.cost_per_km * v_dist / 1000 + v.cost_per_hour * route_s / 3600
         con.cursor().executemany("""INSERT INTO optimization_route (optimization_run_id, vehicle_id, route_sequence, stop_location_id, shipment_id, arrival_time, departure_time,
-                                    wait_s, service_s, distance_from_previous_m, travel_time_from_previous_s, late_s) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", rows)
-        un = [(run_id, shid, "DROPPED_OPTIONAL" if s.optional else "INFEASIBLE_DROPPED", s.drop_penalty) for s in data.stops for shid in s.shipment_ids if shid not in routed]
+                                    wait_s, service_s, distance_from_previous_m, travel_time_from_previous_s, late_s, stop_kind, load_after_kg) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", rows)
+        un = [(run_id, shid, "DROPPED_OPTIONAL" if s.optional else "INFEASIBLE_DROPPED", s.drop_penalty)
+              for s in data.stops if s.kind != "PICKUP_DELIVERY_P" for shid in s.shipment_ids if shid not in routed]
         un += [(run_id, shid, reason, None) for shid, reason in data.unsupported]
         if un:
             con.cursor().executemany("INSERT INTO optimization_unassigned (optimization_run_id, shipment_id, reason, penalty_applied) VALUES (%s,%s,%s,%s)", un)

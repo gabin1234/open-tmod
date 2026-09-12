@@ -146,9 +146,10 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
     @r.get("/shipments")
     def shipments(date_: date | None = Query(None, alias="date"), limit: int = 500):
         with _conn() as c:
-            q = """SELECT sh.shipment_id, sh.source_ref, sh.order_ref, sh.kind, sh.requested_date, sh.window_start, sh.window_end, sh.service_s, sh.weight_kg, sh.volume_m3,
+            q = """SELECT sh.shipment_id, sh.source_ref, sh.order_ref, sh.kind, pl.location_code AS pickup_location_code, pl.postal_code AS pickup_postal_code, sh.requested_date, sh.window_start, sh.window_end, sh.service_s, sh.weight_kg, sh.volume_m3,
                           sh.pieces, sh.priority, sh.optional_flag, l.location_code, l.address_line, l.city, l.postal_code, l.latitude, l.longitude, cu.customer_code, cu.name AS customer_name
-                   FROM shipment sh JOIN location l ON l.location_id=sh.delivery_location_id LEFT JOIN customer cu ON cu.customer_id=sh.customer_id WHERE sh.active_flag"""
+                   FROM shipment sh JOIN location l ON l.location_id=sh.delivery_location_id LEFT JOIN customer cu ON cu.customer_id=sh.customer_id
+                   LEFT JOIN location pl ON pl.location_id=sh.pickup_location_id WHERE sh.active_flag"""
             args: list = []
             if date_:
                 q += " AND sh.requested_date=%s"
@@ -329,7 +330,7 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
         if not run:
             raise HTTPException(404, "run not found")
         rows = c.execute("""SELECT x.vehicle_id, v.vehicle_code, x.route_sequence, x.stop_location_id, l.location_code, l.address_line, l.postal_code, l.latitude, l.longitude, x.shipment_id, sh.source_ref,
-                                   x.arrival_time, x.departure_time, x.wait_s, x.service_s, x.distance_from_previous_m, x.travel_time_from_previous_s, x.late_s
+                                   x.arrival_time, x.departure_time, x.wait_s, x.service_s, x.distance_from_previous_m, x.travel_time_from_previous_s, x.late_s, x.stop_kind, x.load_after_kg
                             FROM optimization_route x JOIN vehicle v USING (vehicle_id) JOIN location l ON l.location_id=x.stop_location_id LEFT JOIN shipment sh ON sh.shipment_id=x.shipment_id
                             WHERE x.optimization_run_id=%s ORDER BY v.vehicle_code, x.route_sequence""", (run_id,)).fetchall()
         prof = {"OSRM": "driving", "VALHALLA": "truck", "MANUAL": "test"}.get(run["distance_provider"], "driving")

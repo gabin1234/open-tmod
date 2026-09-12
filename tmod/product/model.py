@@ -47,6 +47,9 @@ class Stop:
     priority: int
     customer_ids: tuple[int, ...]
     forbidden_vehicles: frozenset[int] = frozenset()
+    kind: str = "DELIVERY"          # DELIVERY | PICKUP | PICKUP_DELIVERY_P | PICKUP_DELIVERY_D
+    pair: int | None = None         # shipment_id linking the P and D nodes of one PICKUP_DELIVERY shipment
+    demand_sign: int = 1            # +1 loads the vehicle at this stop, -1 unloads
 
 
 @dataclass
@@ -117,20 +120,32 @@ def load_scenario(con: psycopg.Connection, scenario_code: str) -> ScenarioData:
     groups: dict[tuple, dict] = {}
     unsupported: list[tuple[int, str]] = []
     midnight = datetime.combine(plan_date, time(0), tzinfo=tz)
+    pnd: list[Stop] = []
     for r in con.execute("""SELECT sh.shipment_id, sh.kind, sh.delivery_location_id, sh.customer_id, sh.weight_kg, sh.volume_m3, sh.pieces,
                                    COALESCE(ss.override_service_s, sh.service_s), COALESCE(ss.override_window_start, sh.window_start), COALESCE(ss.override_window_end, sh.window_end),
-                                   sh.optional_flag, sh.drop_penalty, COALESCE(ss.override_priority, sh.priority, 5), l.latitude
+                                   sh.optional_flag, sh.drop_penalty, COALESCE(ss.override_priority, sh.priority, 5), l.latitude, sh.pickup_location_id, pl.latitude
                             FROM scenario_shipment ss JOIN shipment sh ON sh.shipment_id=ss.shipment_id JOIN location l ON l.location_id=sh.delivery_location_id
+                            LEFT JOIN location pl ON pl.location_id=sh.pickup_location_id
                             WHERE ss.scenario_id=%s AND sh.active_flag ORDER BY sh.shipment_id""", (sid,)).fetchall():
-        shid, kind, loc, cust, wkg, vm3, pieces, svc, ws, we, opt, pen, prio, lat = r
-        if kind != "DELIVERY":
-            unsupported.append((shid, "UNSUPPORTED_KIND"))
-            continue
+        shid, kind, loc, cust, wkg, vm3, pieces, svc, ws, we, opt, pen, prio, lat, ploc, plat = r
         if lat is None:
             unsupported.append((shid, "NO_COORDINATES"))
             continue
         ws_s = int((ws.astimezone(tz) - midnight).total_seconds()) if ws else None
         we_s = int((we.astimezone(tz) - midnight).total_seconds()) if we else None
+        if kind in ("PICKUP", "PICKUP_DELIVERY"):
+            service = int(base_rule[0]) + (int(svc) if svc is not None else int(base_rule[1]) * int(pieces or 1))
+            common = dict(shipment_ids=(shid,), weight_kg=float(wkg or 0), volume_m3=float(vm3 or 0), service_s=service, optional=bool(opt),
+                          drop_penalty=float(pen) if pen else None, priority=int(prio), customer_ids=(cust,) if cust else ())
+            if kind == "PICKUP":
+                pnd.append(Stop(location_id=loc, window_start_s=ws_s, window_end_s=we_s, kind="PICKUP", demand_sign=1, **common))
+            else:
+                if ploc is None or plat is None:
+                    unsupported.append((shid, "NO_PICKUP_LOCATION"))
+                    continue
+                pnd.append(Stop(location_id=ploc, window_start_s=None, window_end_s=None, kind="PICKUP_DELIVERY_P", pair=shid, demand_sign=1, **common))
+                pnd.append(Stop(location_id=loc, window_start_s=ws_s, window_end_s=we_s, kind="PICKUP_DELIVERY_D", pair=shid, demand_sign=-1, **common))
+            continue
         g = groups.setdefault((loc, ws_s, we_s), {"ids": [], "w": 0.0, "v": 0.0, "svc": 0, "opt": True, "pen": 0.0, "prio": 99, "cust": set(), "pieces": 0, "explicit": 0})
         g["ids"].append(shid)
         g["w"] += float(wkg or 0)
@@ -156,6 +171,15 @@ def load_scenario(con: psycopg.Connection, scenario_code: str) -> ScenarioData:
                 if vtid:
                     fv |= type_vehicles.get(vtid, set())
         stops.append(Stop(loc, tuple(g["ids"]), g["w"], g["v"], service, ws_s, we_s, g["opt"], g["pen"] or None, g["prio"], tuple(g["cust"]), frozenset(fv)))
+    for s in pnd:   # restrictions for P&D nodes (same rule as grouped stops)
+        fv = set()
+        for vid, vtid, cid, lid in forbid:
+            if (cid and cid in s.customer_ids) or (lid and lid == s.location_id):
+                if vid:
+                    fv.add(vid)
+                if vtid:
+                    fv |= type_vehicles.get(vtid, set())
+        stops.append(Stop(**{**s.__dict__, "forbidden_vehicles": frozenset(fv)}))
     return ScenarioData(sid, scenario_code, plan_date, tz, depot_loc, prov, PROFILE.get(prov, "driving"), tl, vehicles, stops, constraints, weights, unsupported, settings or {})
 
 

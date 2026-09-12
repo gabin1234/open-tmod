@@ -107,3 +107,4 @@ CSV 원본 데이터에서 시작해 Baseline 재현 → Scenario 최적화 → 
 | P04 Model Builder | FROZEN | 2026-09-12 | prod-04 |
 | P05 API | FROZEN | 2026-09-12 | prod-05 |
 | P06 Frontend | FROZEN | 2026-09-12 | prod-06, product-v0.1 |
+| P07 Phase 2 Pickup & Delivery | REVIEW | — | — |

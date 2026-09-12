@@ -413,3 +413,6 @@ DO $$ DECLARE t text; BEGIN
 
 -- v1.1 (P03): per-segment durations alongside segment_ids so time-of-day adjustments can be applied per edge
 ALTER TABLE distance_cache ADD COLUMN IF NOT EXISTS segment_durations_s integer[];
+
+-- v1.2 (P07): stop kind on route rows (DEPOT | PICKUP | DELIVERY)
+ALTER TABLE optimization_route ADD COLUMN IF NOT EXISTS stop_kind text NOT NULL DEFAULT 'DELIVERY';
