@@ -139,11 +139,13 @@ async function loadRunList() {
   const runs = [];
   for (const s of scs) { if (s.runs) { const d = await api(`/api/v2/scenarios/${s.scenario_code}`); d.runs.forEach(r => runs.push({...r, scenario_code: s.scenario_code})); } }
   state.runs = runs;
-  const opts = runs.map(r => `<option value="${r.optimization_run_id}">#${r.optimization_run_id} ${r.scenario_code} · ${r.solver_status} · ${fmt(r.vehicle_count)} veh</option>`).join("");
+  const ok = runs.filter(r => r.solver_status === "OPTIMAL" || r.solver_status === "FEASIBLE");   // ERROR/INFEASIBLE runs have no metrics
+  const opt = r => `<option value="${r.optimization_run_id}">#${r.optimization_run_id} ${r.scenario_code} · ${r.solver_status} · ${fmt(r.vehicle_count)} veh</option>`;
+  const opts = ok.map(opt).join("");
   const cur = $("run-sel").value;
   $("run-sel").innerHTML = opts; $("cmp-a").innerHTML = opts; $("cmp-b").innerHTML = opts;
   if (cur) $("run-sel").value = cur;
-  if (runs.length && !state.run && document.querySelector("#v-result.on")) loadRun();
+  if (ok.length && !state.run && document.querySelector("#v-result.on")) loadRun();
 }
 
 async function loadRun() {
