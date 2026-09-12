@@ -30,3 +30,4 @@
 | W01 | Backend API | ~16k | ~12k | ~773k | tmod/web/{app,runs,serialize}.py, +fastapi/uvicorn |
 | W02-04 | frontend, refresh/health, ops+tunnel+token | ~40k | ~22k | ~835k | web/, tmod/web/refresh.py, ops/ |
 | W05 | xlsx upload | ~14k | ~10k | ~880k | tmod/web/upload.py |
+| P01 | PostgreSQL schema | ~22k | ~16k | ~950k | db/ddl 27 tables, seed, ERD, docker-backed test |

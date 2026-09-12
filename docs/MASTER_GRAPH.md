@@ -97,3 +97,9 @@ CSV 원본 데이터에서 시작해 Baseline 재현 → Scenario 최적화 → 
 | W03 Refresh + Health | FROZEN | 2026-09-11 | web-03 |
 | W04 Ops | FROZEN | 2026-09-11 | web-04 |
 | W05 xlsx Upload | FROZEN | 2026-09-11 | web-05 |
+
+## Product Track (2026-09-11~) — [docs/PRODUCT_GRAPH.md](PRODUCT_GRAPH.md), spec [docs/PRODUCT_SPEC_v1.md](PRODUCT_SPEC_v1.md)
+| Node | 상태 | 승인일 | tag |
+|------|------|--------|-----|
+| P01 Schema | REVIEW | — | — |
+| P02–P06 | PENDING | — | — |
