@@ -21,7 +21,7 @@ class Mock:
 
     def route(self, a, b):
         return RouteDetail(1500.0, 200.0, ((a[0], a[1]), (b[0], b[1])),
-                           (Edge(111, "v:1", "Silver Avenue", 900.0, 120.0), Edge(222, "v:2", "Oak St", 600.0, 80.0)))
+                           (Edge(111, "v:1", "Silver Avenue", 900.0, 120.0, ((a[0], a[1]), (a[0] + 0.005, a[1]))), Edge(222, "v:2", "Oak St", 600.0, 80.0)))
 
 
 def _setup(pg):
@@ -46,8 +46,8 @@ def test_fill_cache_and_route_detail(pg):
     assert con.execute("SELECT count(*) FROM road_segment WHERE osm_way_id IN (111,222)").fetchone()[0] == 2  # no dupes
     row = con.execute("SELECT segment_ids, segment_durations_s, distance_m FROM distance_cache WHERE from_location_id=%s AND to_location_id=%s", (ids[0], ids[1])).fetchone()
     assert len(row[0]) == 2 and row[1] == [120, 80] and row[2] == 1500
-    codes = con.execute("SELECT segment_code, road_name FROM road_segment WHERE osm_way_id=111").fetchone()
-    assert codes[0].startswith("SEG-") and codes[1] == "Silver Avenue"
+    codes = con.execute("SELECT segment_code, road_name, geometry FROM road_segment WHERE osm_way_id=111").fetchone()
+    assert codes[0].startswith("SEG-") and codes[1] == "Silver Avenue" and len(codes[2]) == 2
     con.close()
 
 
@@ -84,6 +84,7 @@ def test_valhalla_real():
     p = ValhallaRoadProvider()
     rd = p.route((33.587, -84.334), (33.79, -84.39))
     assert rd and rd.distance_m > 20000 and len(rd.edges) > 50 and any(e.way_id for e in rd.edges) and abs(sum(e.duration_s for e in rd.edges) - rd.duration_s) < 5
+    assert sum(1 for e in rd.edges if e.geometry) > 40
     dist, dur = p.matrix([(33.587, -84.334), (33.79, -84.39)])
     assert dist[0][1] > 20000 and dur[0][1] > 600
 

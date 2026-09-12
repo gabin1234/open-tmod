@@ -24,6 +24,7 @@ class Edge:
     name: str
     length_m: float
     duration_s: float
+    geometry: tuple[tuple[float, float], ...] | None = None   # edge polyline slice, for map highlight / nearest-segment
 
 
 @dataclass(frozen=True)
@@ -104,13 +105,16 @@ class ValhallaRoadProvider:
             t = _post(f"{self.base}/route", {"locations": [{"lat": a[0], "lon": a[1]}, {"lat": b[0], "lon": b[1]}], "costing": self.profile, "units": "kilometers"})["trip"]
             leg = t["legs"][0]
             tr = _post(f"{self.base}/trace_attributes", {"encoded_polyline": leg["shape"], "costing": self.profile, "shape_match": "edge_walk",
-                       "filters": {"attributes": ["edge.way_id", "edge.names", "edge.length", "edge.id", "node.elapsed_time"], "action": "include"}})
+                       "filters": {"attributes": ["edge.way_id", "edge.names", "edge.length", "edge.id", "edge.begin_shape_index", "edge.end_shape_index", "node.elapsed_time", "shape"], "action": "include"}})
         except (urllib.error.URLError, TimeoutError, OSError, KeyError, ValueError):
             return None
+        shape = decode_polyline6(tr.get("shape") or leg["shape"])
         edges, prev = [], 0.0
         for e in tr.get("edges", []):
             t_end = (e.get("end_node") or {}).get("elapsed_time", prev)
-            edges.append(Edge(e.get("way_id"), f"valhalla:{e.get('id')}", ", ".join(e.get("names") or []), e.get("length", 0) * 1000, max(0.0, t_end - prev)))
+            b, en = e.get("begin_shape_index"), e.get("end_shape_index")
+            geom = shape[b:en + 1] if b is not None and en is not None and en > b else None
+            edges.append(Edge(e.get("way_id"), f"valhalla:{e.get('id')}", ", ".join(e.get("names") or []), e.get("length", 0) * 1000, max(0.0, t_end - prev), geom))
             prev = t_end
         return RouteDetail(t["summary"]["length"] * 1000, t["summary"]["time"], decode_polyline6(leg["shape"]), tuple(edges))
 
@@ -152,9 +156,11 @@ def _segment_id(con, e: Edge) -> int:
     else:
         row = con.execute("SELECT segment_id FROM road_segment WHERE osrm_edge_ref=%s", (e.edge_ref,)).fetchone()
     if row:
+        if e.geometry:
+            con.execute("UPDATE road_segment SET geometry=%s WHERE segment_id=%s AND geometry IS NULL", (json.dumps([list(p) for p in e.geometry]), row[0]))
         return row[0]
-    sid = con.execute("INSERT INTO road_segment (segment_code, road_name, osm_way_id, osrm_edge_ref, length_m) VALUES ('tmp', %s, %s, %s, %s) RETURNING segment_id",
-                      (e.name or "(unnamed)", e.way_id, e.edge_ref, round(e.length_m, 1))).fetchone()[0]
+    sid = con.execute("INSERT INTO road_segment (segment_code, road_name, osm_way_id, osrm_edge_ref, length_m, geometry) VALUES ('tmp', %s, %s, %s, %s, %s) RETURNING segment_id",
+                      (e.name or "(unnamed)", e.way_id, e.edge_ref, round(e.length_m, 1), json.dumps([list(p) for p in e.geometry]) if e.geometry else None)).fetchone()[0]
     con.execute("UPDATE road_segment SET segment_code = 'SEG-' || lpad(%s::text, 6, '0') WHERE segment_id=%s", (sid, sid))
     return sid
 
