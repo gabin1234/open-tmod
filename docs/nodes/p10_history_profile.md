@@ -1,6 +1,6 @@
 # P10 — Historical Travel Time → traffic_profile
 
-상태: REVIEW (승인 대기)
+상태: FROZEN (2026-09-12 승인)
 버전: 1.0 (P09 traffic_profile 적재 파이프라인)
 
 ## 데이터
