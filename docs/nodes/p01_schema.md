@@ -1,6 +1,6 @@
 # P01 — PostgreSQL Schema
 
-상태: REVIEW (승인 대기)
+상태: FROZEN (2026-09-11 승인)
 버전: 1.0
 의존성: psycopg[binary] (테스트·ETL), Docker(postgres:16)
 

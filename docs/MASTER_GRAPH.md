@@ -101,5 +101,6 @@ CSV 원본 데이터에서 시작해 Baseline 재현 → Scenario 최적화 → 
 ## Product Track (2026-09-11~) — [docs/PRODUCT_GRAPH.md](PRODUCT_GRAPH.md), spec [docs/PRODUCT_SPEC_v1.md](PRODUCT_SPEC_v1.md)
 | Node | 상태 | 승인일 | tag |
 |------|------|--------|-----|
-| P01 Schema | REVIEW | — | — |
-| P02–P06 | PENDING | — | — |
+| P01 Schema | FROZEN | 2026-09-11 | prod-01 |
+| P02 Mapping + ETL | REVIEW | — | — |
+| P03–P06 | PENDING | — | — |
