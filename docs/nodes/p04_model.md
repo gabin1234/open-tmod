@@ -1,6 +1,6 @@
 # P04 — OR-Tools Model Builder + Solve
 
-상태: REVIEW (승인 대기)
+상태: FROZEN (2026-09-12 승인)
 버전: 1.0
 
 ## 책임

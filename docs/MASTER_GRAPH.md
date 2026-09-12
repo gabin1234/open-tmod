@@ -104,5 +104,6 @@ CSV 원본 데이터에서 시작해 Baseline 재현 → Scenario 최적화 → 
 | P01 Schema | FROZEN | 2026-09-11 | prod-01 |
 | P02 Mapping + ETL | FROZEN | 2026-09-11 | prod-02 |
 | P03 Routing Data | FROZEN | 2026-09-12 | prod-03 |
-| P04 Model Builder | REVIEW | — | — |
-| P05–P06 | PENDING | — | — |
+| P04 Model Builder | FROZEN | 2026-09-12 | prod-04 |
+| P05 API | REVIEW | — | — |
+| P06 | PENDING | — | — |
