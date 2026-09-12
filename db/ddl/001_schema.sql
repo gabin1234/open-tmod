@@ -410,3 +410,6 @@ DO $$ DECLARE t text; BEGIN
   FOR t IN SELECT table_name FROM information_schema.columns WHERE table_schema='tmod' AND column_name='updated_at' LOOP
     EXECUTE format('DROP TRIGGER IF EXISTS trg_touch ON tmod.%I; CREATE TRIGGER trg_touch BEFORE UPDATE ON tmod.%I FOR EACH ROW EXECUTE FUNCTION tmod.touch_updated_at()', t, t);
   END LOOP; END $$;
+
+-- v1.1 (P03): per-segment durations alongside segment_ids so time-of-day adjustments can be applied per edge
+ALTER TABLE distance_cache ADD COLUMN IF NOT EXISTS segment_durations_s integer[];

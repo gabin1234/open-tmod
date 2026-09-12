@@ -1,7 +1,7 @@
 # P01 — PostgreSQL Schema
 
 상태: FROZEN (2026-09-11 승인)
-버전: 1.0
+버전: 1.1 (P03: distance_cache.segment_durations_s 추가, additive)
 의존성: psycopg[binary] (테스트·ETL), Docker(postgres:16)
 
 ## 도메인 / 테이블 (27)
