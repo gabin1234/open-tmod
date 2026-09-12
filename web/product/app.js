@@ -68,6 +68,7 @@ async function openScenario(code) {
    <div class="card"><h3>${s.scenario_code} <span class="badge ${s.status}">${s.status}</span></h3>
     <div class="row"><label>name<input id="e-name" value="${s.name}"></label><label>plan date<input value="${s.plan_date}" disabled></label><label>depot<input value="${s.depot_code}" disabled></label>
      <label>provider<select id="e-prov"><option ${s.distance_provider === "VALHALLA" ? "selected" : ""}>VALHALLA</option><option ${s.distance_provider === "OSRM" ? "selected" : ""}>OSRM</option></select></label><label>time limit s<input id="e-tl" type="number" value="${s.time_limit_s}"></label></div>
+    <label style="margin-top:6px"><input type="checkbox" id="e-multidepot" ${s.settings && s.settings.multi_depot ? "checked" : ""}> multi-depot: vehicles start and end at their own depot</label>
     <div class="muted" style="margin-top:6px">shipments in scenario: <b>${s.shipment_count}</b> <button class="btn" id="e-populate" style="padding:1px 8px;font-size:12px">populate from ${s.plan_date}</button></div>
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="e-save">Save</button><button class="btn primary" id="e-run">Optimize</button><button class="btn" id="e-copy">Copy</button><button class="btn danger" id="e-del">Delete</button><span id="e-msg" class="muted"></span></div></div>
    <div class="grid" style="grid-template-columns:1fr 1fr">
@@ -88,7 +89,8 @@ function collectScenarioEdits() {
   const weights = {};
   document.querySelectorAll("#sc-detail input[data-w]").forEach(i => { if (Number(i.value) > 0) weights[i.dataset.w] = Number(i.value); });
   const vehicles = [...document.querySelectorAll("#sc-detail input[data-v]:checked")].map(i => i.dataset.v);
-  return {name: $("e-name").value, provider: $("e-prov").value, time_limit_s: Number($("e-tl").value), constraints, weights, vehicles};
+  const settings = {...(state.scenario.settings || {}), multi_depot: $("e-multidepot").checked};
+  return {name: $("e-name").value, provider: $("e-prov").value, time_limit_s: Number($("e-tl").value), constraints, weights, vehicles, settings};
 }
 
 async function saveScenario() {
@@ -156,8 +158,9 @@ async function loadRun() {
   state.run = r;
   $("run-meta").textContent = `${r.scenario_code} · ${r.solver_status} · ${fmt(r.vehicle_count)} vehicles · ${mi(r.total_distance_m)} mi · drive ${fmt(r.total_drive_s / 60)} min · service ${fmt(r.total_service_s / 60)} min · $${fmt(r.total_cost)}`;
   state.layer.clearLayers();
-  const depot = r.routes[0] && r.routes[0].stops[0];
-  if (depot) L.marker([depot.latitude, depot.longitude]).bindTooltip("depot " + depot.location_code).addTo(state.layer);
+  const depots = {};
+  r.routes.forEach(v => { const d = v.stops[0]; if (d) depots[d.location_code] = d; });
+  Object.values(depots).forEach(d => L.marker([d.latitude, d.longitude]).bindTooltip("depot " + d.location_code).addTo(state.layer));
   r.routes.forEach((v, i) => {
     const color = COLORS[i % COLORS.length];
     const pts = v.stops.map(s => [s.latitude, s.longitude]);

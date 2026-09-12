@@ -37,3 +37,4 @@
 | P05 | product API /api/v2 | ~24k | ~16k | ~1.10M | tmod/product/api.py mounted in web app |
 | P06 | product frontend /product | ~26k | ~18k | ~1.15M | web/product/{index.html,app.js}; runs?detail=1 lazy geometry |
 | P07 | Phase 2 pickup & delivery | ~16k | ~11k | ~1.19M | model/solve pairs, ETL pickup_location, stop_kind |
+| P08 | Phase 2 multiple depot | ~10k | ~8k | ~1.21M | per-vehicle depots via RoutingIndexManager starts/ends |

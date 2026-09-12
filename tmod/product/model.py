@@ -31,6 +31,7 @@ class Vehicle:
     cost_per_km: float
     cost_per_hour: float
     vehicle_type_id: int
+    depot_location_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -70,8 +71,22 @@ class ScenarioData:
     settings: dict = field(default_factory=dict)
 
     @property
+    def multi_depot(self) -> bool:
+        return bool(self.settings.get("multi_depot"))
+
+    @property
+    def depot_locations(self) -> list[int]:
+        """Depot nodes: scenario depot, plus each vehicle's own depot when multi_depot."""
+        if not self.multi_depot:
+            return [self.depot_location_id]
+        return list(dict.fromkeys([self.depot_location_id] + [v.depot_location_id or self.depot_location_id for v in self.vehicles]))
+
+    def vehicle_depot_node(self, v: Vehicle) -> int:
+        return self.depot_locations.index(v.depot_location_id or self.depot_location_id) if self.multi_depot else 0
+
+    @property
     def locations(self) -> list[int]:
-        return [self.depot_location_id] + [s.location_id for s in self.stops]
+        return self.depot_locations + [s.location_id for s in self.stops]
 
 
 def _secs(t: time | None, default: int) -> int:
@@ -98,13 +113,14 @@ def load_scenario(con: psycopg.Connection, scenario_code: str) -> ScenarioData:
     vehicles = []
     for r in con.execute("""SELECT v.vehicle_id, v.vehicle_code, COALESCE(sv.override_capacity_kg, t.capacity_kg), t.capacity_m3, t.max_stops, t.max_route_s, t.max_distance_m,
                                    v.work_limit_s, v.duty_limit_s, COALESCE(sv.override_shift_start, a.shift_start), COALESCE(sv.override_shift_end, a.shift_end),
-                                   t.fixed_cost, t.cost_per_km, t.cost_per_hour, t.vehicle_type_id
+                                   t.fixed_cost, t.cost_per_km, t.cost_per_hour, t.vehicle_type_id, vd.location_id
                             FROM scenario_vehicle sv JOIN vehicle v ON v.vehicle_id=sv.vehicle_id JOIN vehicle_type t ON t.vehicle_type_id=v.vehicle_type_id
+                            JOIN depot vd ON vd.depot_id=v.depot_id
                             LEFT JOIN LATERAL (SELECT shift_start, shift_end FROM vehicle_availability a WHERE a.vehicle_id=v.vehicle_id AND a.active_flag
                                                AND (a.day_of_week IS NULL OR a.day_of_week=%s::day_of_week) ORDER BY a.day_of_week NULLS LAST LIMIT 1) a ON true
                             WHERE sv.scenario_id=%s AND v.active_flag ORDER BY v.vehicle_code""", (dow, sid)).fetchall():
         vehicles.append(Vehicle(r[0], r[1], float(r[2]) if r[2] is not None else None, float(r[3]) if r[3] is not None else None, r[4], r[5], r[6], r[7], r[8],
-                                _secs(r[9], _secs(d_open, 8 * 3600)), _secs(r[10], _secs(d_close, 18 * 3600)), float(r[11]), float(r[12]), float(r[13]), r[14]))
+                                _secs(r[9], _secs(d_open, 8 * 3600)), _secs(r[10], _secs(d_close, 18 * 3600)), float(r[11]), float(r[12]), float(r[13]), r[14], r[15]))
 
     constraints = {c: (p or {}) for c, p in con.execute("SELECT constraint_code, params FROM scenario_constraint WHERE scenario_id=%s AND enabled_flag", (sid,)).fetchall()}
     weights = {c: float(w) / 100 for c, w in con.execute("SELECT objective_code, weight_pct FROM scenario_objective_weight WHERE scenario_id=%s", (sid,)).fetchall()}

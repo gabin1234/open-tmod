@@ -46,11 +46,14 @@ def build_and_solve(data: ScenarioData, dist: list[list[int]], dur: list[list[in
     n, V = len(data.locations), len(data.vehicles)
     if V == 0:
         raise ValueError("scenario has no vehicles")
-    mgr = pywrapcp.RoutingIndexManager(n, V, 0)
+    D = len(data.depot_locations)                     # depot nodes 0..D-1, stops D..n-1
+    depots = [data.vehicle_depot_node(v) for v in data.vehicles]
+    mgr = pywrapcp.RoutingIndexManager(n, V, depots, depots)
     rt = pywrapcp.RoutingModel(mgr)
     C = data.constraints
     stops = data.stops
-    service = [0] + [s.service_s if "SERVICE_TIME" in C else 0 for s in stops]
+    service = [0] * D + [s.service_s if "SERVICE_TIME" in C else 0 for s in stops]
+    node_stop = lambda node: stops[node - D] if node >= D else None  # noqa: E731
 
     for vi, v in enumerate(data.vehicles):
         def cb(a, b, v=v):
@@ -74,7 +77,7 @@ def build_and_solve(data: ScenarioData, dist: list[list[int]], dur: list[list[in
         if lim:
             tdim.SetSpanUpperBoundForVehicle(min(lim), vi)
     lat_pen = C.get("SOFT_TIME_WINDOW", {}).get("penalty_per_min", 2.0) if "SOFT_TIME_WINDOW" in C else None
-    for k, s in enumerate(stops, start=1):
+    for k, s in enumerate(stops, start=D):
         idx = mgr.NodeToIndex(k)
         if s.window_start_s is not None:
             tdim.CumulVar(idx).SetMin(max(0, s.window_start_s))
@@ -98,36 +101,36 @@ def build_and_solve(data: ScenarioData, dist: list[list[int]], dur: list[list[in
     # capacities (signed: pickups load, P&D deliveries unload)
     for code, attr, cap_attr, scale in (("CAPACITY_WEIGHT", "weight_kg", "capacity_kg", 1000), ("CAPACITY_VOLUME", "volume_m3", "capacity_m3", 1000)):
         if code in C:
-            demand = [0] + [int(round(getattr(s, attr) * scale)) * s.demand_sign for s in stops]
+            demand = [0] * D + [int(round(getattr(s, attr) * scale)) * s.demand_sign for s in stops]
             caps = [int(round(getattr(v, cap_attr) * scale)) if getattr(v, cap_attr) else BIG for v in data.vehicles]
             rt.AddDimensionWithVehicleCapacity(rt.RegisterUnaryTransitCallback(lambda a, d=demand: d[mgr.IndexToNode(a)]), 0, caps, True, code)
     # pickup & delivery pairs: same vehicle, pickup first
     solver = rt.solver()
-    pick = {s.pair: k for k, s in enumerate(stops, start=1) if s.kind == "PICKUP_DELIVERY_P"}
-    for k, s in enumerate(stops, start=1):
+    pick = {s.pair: k for k, s in enumerate(stops, start=D) if s.kind == "PICKUP_DELIVERY_P"}
+    for k, s in enumerate(stops, start=D):
         if s.kind == "PICKUP_DELIVERY_D" and s.pair in pick:
             p, d = mgr.NodeToIndex(pick[s.pair]), mgr.NodeToIndex(k)
             rt.AddPickupAndDelivery(p, d)
             solver.Add(rt.VehicleVar(p) == rt.VehicleVar(d))
             solver.Add(tdim.CumulVar(p) <= tdim.CumulVar(d))
     if "WORK_LIMIT" in C:
-        work = [0] + [s.service_s for s in stops]
+        work = [0] * D + [s.service_s for s in stops]
         caps = [v.work_limit_s or BIG for v in data.vehicles]
         rt.AddDimensionWithVehicleCapacity(rt.RegisterUnaryTransitCallback(lambda a, w=work: w[mgr.IndexToNode(a)]), 0, caps, True, "work")
     # max stops per vehicle
     if any(v.max_stops for v in data.vehicles):
-        rt.AddDimensionWithVehicleCapacity(rt.RegisterUnaryTransitCallback(lambda a: 0 if mgr.IndexToNode(a) == 0 else 1), 0,
+        rt.AddDimensionWithVehicleCapacity(rt.RegisterUnaryTransitCallback(lambda a: 0 if mgr.IndexToNode(a) < D else 1), 0,
                                            [v.max_stops or BIG for v in data.vehicles], True, "stops")
     # compatibility
     if "VEHICLE_COMPAT" in C:
-        for k, s in enumerate(stops, start=1):
+        for k, s in enumerate(stops, start=D):
             if s.forbidden_vehicles:
                 # ortools 9.15 SWIG rejects SetAllowedVehiclesForIndex(list) -> constrain the VehicleVar directly (-1 = unperformed stays allowed)
                 forbidden = [vi for vi, v in enumerate(data.vehicles) if v.vehicle_id in s.forbidden_vehicles]
                 rt.VehicleVar(mgr.NodeToIndex(k)).RemoveValues(forbidden)
     # optional / drop
     default_pen = float(C.get("OPTIONAL_DROP", {}).get("default_penalty", 500))
-    for k, s in enumerate(stops, start=1):
+    for k, s in enumerate(stops, start=D):
         if "OPTIONAL_DROP" in C and s.optional:
             pen = int(round((s.drop_penalty or default_pen) * SCALE))
         else:
@@ -139,7 +142,7 @@ def build_and_solve(data: ScenarioData, dist: list[list[int]], dur: list[list[in
     params.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
     params.time_limit.FromSeconds(max(1, data.time_limit_s))
     sol = rt.SolveWithParameters(params)
-    return mgr, rt, sol, tdim
+    return mgr, rt, sol, tdim, D
 
 
 def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProvider | None = None) -> SolveResult:
@@ -150,7 +153,7 @@ def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProv
     con.commit()
     try:
         dist, dur = matrices(con, data, provider)
-        mgr, rt, sol, tdim = build_and_solve(data, dist, dur)
+        mgr, rt, sol, tdim, D = build_and_solve(data, dist, dur)
         if sol is None:
             con.execute("UPDATE optimization_run SET solver_status='INFEASIBLE', end_time=now() WHERE optimization_run_id=%s", (run_id,))
             con.execute("UPDATE scenario SET status='READY' WHERE scenario_id=%s", (data.scenario_id,))
@@ -167,14 +170,16 @@ def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProv
             if rt.IsEnd(sol.Value(rt.NextVar(idx))):
                 continue
             used += 1
-            seq, prev_node, v_dist, v_drive, v_service = 0, 0, 0, 0, 0
+            dnode = data.vehicle_depot_node(v)
+            depot_loc = data.locations[dnode]
+            seq, prev_node, v_dist, v_drive, v_service = 0, dnode, 0, 0, 0
             start_s = sol.Value(tdim.CumulVar(idx))
             load = 0.0
-            rows.append((run_id, v.vehicle_id, 0, data.depot_location_id, None, midnight + timedelta(seconds=start_s), midnight + timedelta(seconds=start_s), 0, 0, 0, 0, 0, "DEPOT", None))
+            rows.append((run_id, v.vehicle_id, 0, depot_loc, None, midnight + timedelta(seconds=start_s), midnight + timedelta(seconds=start_s), 0, 0, 0, 0, 0, "DEPOT", None))
             idx = sol.Value(rt.NextVar(idx))
             while not rt.IsEnd(idx):
                 node = mgr.IndexToNode(idx)
-                s = data.stops[node - 1]
+                s = data.stops[node - D]
                 arr = sol.Value(tdim.CumulVar(idx))
                 d_prev, t_prev = dist[prev_node][node], dur[prev_node][node]
                 late = max(0, arr - s.window_end_s) if s.window_end_s is not None else 0
@@ -193,11 +198,11 @@ def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProv
                 prev_node = node
                 idx = sol.Value(rt.NextVar(idx))
             end_s = sol.Value(tdim.CumulVar(idx))
-            d_prev, t_prev = dist[prev_node][0], dur[prev_node][0]
+            d_prev, t_prev = dist[prev_node][dnode], dur[prev_node][dnode]
             v_dist += d_prev
             v_drive += t_prev
             seq += 1
-            rows.append((run_id, v.vehicle_id, seq, data.depot_location_id, None, midnight + timedelta(seconds=end_s), midnight + timedelta(seconds=end_s), 0, 0, d_prev, t_prev, 0, "DEPOT", round(load, 3)))
+            rows.append((run_id, v.vehicle_id, seq, depot_loc, None, midnight + timedelta(seconds=end_s), midnight + timedelta(seconds=end_s), 0, 0, d_prev, t_prev, 0, "DEPOT", round(load, 3)))
             route_s = end_s - start_s
             tot_dist += v_dist
             tot_drive += v_drive
