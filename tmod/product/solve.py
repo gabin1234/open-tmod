@@ -1,6 +1,7 @@
 """P04: OR-Tools routing model from ScenarioData; results into optimization_run/route/unassigned. Contract: docs/nodes/p04_model.md"""
 from __future__ import annotations
 
+import statistics
 import sys
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
@@ -185,7 +186,9 @@ def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProv
             max_it = int(data.constraints["DYNAMIC_TRAFFIC"].get("iterations", 3))
             prev = _sequence(data, mgr, rt, sol)
             while iterations_used < max_it:
-                dist, dur = matrices(con, data, provider, _departures(data, mgr, rt, sol, tdim, D))
+                deps = _departures(data, mgr, rt, sol, tdim, D)
+                # pairs not on the previous solution get the median departure, so untimed arcs are not artificially cheap
+                dist, dur = matrices(con, data, provider, deps, int(statistics.median(deps.values())) if deps else None)
                 mgr, rt, sol2, tdim, D = build_and_solve(data, dist, dur)
                 iterations_used += 1
                 if sol2 is None:

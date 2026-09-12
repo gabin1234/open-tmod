@@ -200,7 +200,7 @@ def load_scenario(con: psycopg.Connection, scenario_code: str) -> ScenarioData:
 
 
 def matrices(con: psycopg.Connection, data: ScenarioData, provider: RoadProvider | None = None,
-             depart_by_pair: dict[tuple[int, int], int] | None = None) -> tuple[list[list[int]], list[list[int]]]:
+             depart_by_pair: dict[tuple[int, int], int] | None = None, depart_default: int | None = None) -> tuple[list[list[int]], list[list[int]]]:
     """(distance_m, duration_s) over data.locations from distance_cache; fills missing pairs via provider.
     Time-of-day factors (ROAD_ADJUSTMENT / DYNAMIC_TRAFFIC) use depart_by_pair[(i, j)] seconds when given, else the earliest shift start."""
     locs = data.locations
@@ -216,7 +216,7 @@ def matrices(con: psycopg.Connection, data: ScenarioData, provider: RoadProvider
                            (data.provider_code, data.profile, locs, locs)).fetchall()
         have = {(a, b): (d, t) for a, b, d, t in rows}
     adjust = "ROAD_ADJUSTMENT" in data.constraints or "DYNAMIC_TRAFFIC" in data.constraints
-    depart = min((v.shift_start_s for v in data.vehicles), default=8 * 3600)
+    depart = depart_default if depart_default is not None else min((v.shift_start_s for v in data.vehicles), default=8 * 3600)
     prof = traffic_profile(con, data.plan_date) if adjust else []
     n = len(locs)
     dist = [[0] * n for _ in range(n)]
