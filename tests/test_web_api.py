@@ -135,10 +135,30 @@ def test_token_auth(tmp_path):
         assert c.get("/api/health", headers={"Authorization": "Bearer nope"}).status_code == 401
 
 
-def test_lan_clients_skip_token(tmp_path):
-    with TestClient(create_app(tmp_path, tmp_path / "runs", token="s3cret"), client=("192.168.1.20", 5555)) as c:
+def test_lan_clients_skip_token_only_when_lan_open(tmp_path):
+    with TestClient(create_app(tmp_path, tmp_path / "runs", token="s3cret", lan_open=True), client=("192.168.1.20", 5555)) as c:
         assert c.get("/api/health").status_code == 200
         assert c.get("/api/health", headers={"cf-connecting-ip": "8.8.8.8"}).status_code == 401  # via tunnel -> token
+    with TestClient(create_app(tmp_path, tmp_path / "runs", token="s3cret", lan_open=False), client=("192.168.1.20", 5555)) as c:
+        assert c.get("/api/health").status_code == 401
+
+
+def test_basic_auth_users(tmp_path):
+    import base64
+    with TestClient(create_app(tmp_path, tmp_path / "runs", users="alice:pw1,bob:pw2", token="tok"), client=("8.8.8.8", 1)) as c:
+        r = c.get("/")
+        assert r.status_code == 401 and r.headers.get("www-authenticate", "").startswith("Basic")
+        assert c.get("/api/health").status_code == 401 and "www-authenticate" not in c.get("/api/health").headers
+        bad = base64.b64encode(b"alice:wrong").decode()
+        assert c.get("/api/health", headers={"Authorization": f"Basic {bad}"}).status_code == 401
+        good = base64.b64encode(b"bob:pw2").decode()
+        r = c.get("/api/health", headers={"Authorization": f"Basic {good}"})
+        assert r.status_code == 200 and "tmod_session" in r.cookies
+        assert c.get("/api/health").status_code == 200          # session cookie now
+        c.cookies.clear()
+        assert c.get("/api/health", headers={"Authorization": "Bearer tok"}).status_code == 200
+        h = c.get("/api/health", headers={"Authorization": "Bearer tok"}).json()
+        assert {"version", "osrm", "valhalla", "db", "postgres", "disk_free_gb"} <= set(h) and isinstance(h["postgres"]["ok"], bool)
 
 
 def _xlsx(path, rows, header=("shipment_id", "purchase_order", "delivery_date", "order_type", "customer_name", "phone", "address", "city", "state", "zip", "latitude", "longitude", "model_code", "pieces", "weight_lb", "volume_cuft", "service_minutes", "notes")):

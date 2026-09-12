@@ -1,0 +1,54 @@
+# Open T-Modeler — full stack. First-time prerequisites (graphs are built once, then mounted):
+#   OSRM:     see db/docker-compose.yml notes (osrm-extract/partition/customize into $OSRM_DIR)
+#   Valhalla: put georgia-latest.osm.pbf into $VALHALLA_DIR/custom_files (scripts/valhalla_up.sh does it)
+# Then: docker compose up -d   (add --profile tunnel for a public Cloudflare URL)
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: tmod
+      POSTGRES_USER: tmod
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-tmod}
+    ports: ["5434:5432"]
+    volumes: ["tmod_pg:/var/lib/postgresql/data"]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U tmod"], interval: 5s, timeout: 3s, retries: 20}
+    restart: unless-stopped
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    command: osrm-routed --algorithm mld --max-table-size 200 /data/georgia-latest.osrm
+    volumes: ["${OSRM_DIR:-./data/private/osrm}:/data"]
+    ports: ["5001:5000"]
+    restart: unless-stopped
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    environment:
+      serve_tiles: "True"
+      build_elevation: "False"
+      build_admins: "True"
+      build_time_zones: "True"
+      use_tiles_ignore_pbf: "True"
+      force_rebuild: "False"
+    volumes: ["${VALHALLA_DIR:-./data/private/valhalla}:/custom_files"]
+    ports: ["8002:8002"]
+    restart: unless-stopped
+  api:
+    build: .
+    environment:
+      TMOD_PG_DSN: postgresql://tmod:${PG_PASSWORD:-tmod}@postgres:5432/tmod
+      TMOD_WEB_TOKEN: ${TMOD_WEB_TOKEN:-}
+      TMOD_USERS: ${TMOD_USERS:-}
+      TMOD_LAN_OPEN: ${TMOD_LAN_OPEN:-0}
+      TMOD_VALHALLA_URL: http://valhalla:8002
+      TMOD_OSRM_URL: http://osrm:5000
+    volumes: ["./data:/app/data"]
+    ports: ["8090:8090"]
+    depends_on: {postgres: {condition: service_healthy}}
+    restart: unless-stopped
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --url http://api:8090 --no-autoupdate
+    depends_on: [api]
+    profiles: ["tunnel"]
+    restart: unless-stopped
+volumes:
+  tmod_pg: {}

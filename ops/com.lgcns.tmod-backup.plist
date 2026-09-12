@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- launchd: nightly backup at 02:00. Install: cp ops/com.lgcns.tmod-backup.plist ~/Library/LaunchAgents/ && launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.lgcns.tmod-backup.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.lgcns.tmod-backup</string>
+  <key>WorkingDirectory</key><string>/Users/scmitteam/orca/projects/open-tmod</string>
+  <key>ProgramArguments</key><array><string>/bin/bash</string><string>ops/backup.sh</string></array>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string></dict>
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>0</integer></dict>
+  <key>StandardOutPath</key><string>/Users/scmitteam/orca/projects/open-tmod/data/backup.log</string><key>StandardErrorPath</key><string>/Users/scmitteam/orca/projects/open-tmod/data/backup.log</string>
+</dict></plist>

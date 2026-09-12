@@ -58,8 +58,9 @@ class OSRMProvider:
     code = "OSRM"
     max_block = 100   # osrm-routed default --max-table-size
 
-    def __init__(self, base_url: str = "http://localhost:5001", profile: str = "driving") -> None:
-        self.base, self.profile = base_url.rstrip("/"), profile
+    def __init__(self, base_url: str | None = None, profile: str = "driving") -> None:
+        import os
+        self.base, self.profile = (base_url or os.getenv("TMOD_OSRM_URL", "http://localhost:5001")).rstrip("/"), profile
 
     def _coords(self, coords):
         return ";".join(f"{lon:.6f},{lat:.6f}" for lat, lon in coords)
@@ -91,8 +92,9 @@ class ValhallaRoadProvider:
     code = "VALHALLA"
     max_block = 20    # valhalla crashes (container restart) on 50x50 truck matrices; 20 is safe
 
-    def __init__(self, base_url: str = "http://localhost:8002", profile: str = "truck") -> None:
-        self.base, self.profile = base_url.rstrip("/"), profile
+    def __init__(self, base_url: str | None = None, profile: str = "truck") -> None:
+        import os
+        self.base, self.profile = (base_url or os.getenv("TMOD_VALHALLA_URL", "http://localhost:8002")).rstrip("/"), profile
 
     def matrix(self, coords):
         locs = [{"lat": lat, "lon": lon} for lat, lon in coords]

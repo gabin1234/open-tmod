@@ -27,7 +27,7 @@ function show(v) {
 }
 
 async function init() {
-  try { const h = await api("/api/health"); $("health").textContent = `api ok · valhalla ${h.valhalla ? "up" : "down"} · db ${h.db && h.db.ok ? "up" : "down"}`; } catch (e) { $("health").textContent = "api down"; }
+  try { const h = await api("/api/health"); $("health").textContent = `${h.version || ""} · postgres ${h.postgres && h.postgres.ok ? "up" : "down"} · valhalla ${h.valhalla ? "up" : "down"} · osrm ${h.osrm ? "up" : "down"} · blue yonder ${h.db && h.db.ok ? "up" : "down"}`; } catch (e) { $("health").textContent = "api down"; }
   const depots = await api("/api/v2/master/depot");
   $("sc-depot").innerHTML = depots.map(d => `<option value="${d.depot_code}">${d.depot_code} — ${d.name}</option>`).join("");
   $("sc-date").value = new Date().toISOString().slice(0, 10);

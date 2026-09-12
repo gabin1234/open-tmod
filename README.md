@@ -13,3 +13,14 @@ ops/tunnel.sh                                             # 외부 URL (Cloudfla
 CLI만: `uv run python -m tmod.lmd_poc data/private/lmd_lphb30260_demo data/scenarios/lmd_windows.json out.html --valhalla http://localhost:8002`
 
 테스트: `uv run pytest -q`
+
+## 운영 (P11)
+| 작업 | 명령 |
+|---|---|
+| 이 맥 상시 기동 | `ops/install_launchd.sh` (web + Cloudflare 터널), `ops/com.lgcns.tmod-backup.plist` (매일 02:00 백업) |
+| 현재 URL/토큰 | `ops/url.sh` |
+| 접근 제어 | `ops/.env`: `TMOD_WEB_TOKEN`(API·공유 링크), `TMOD_USERS="alice:pw,bob:pw"`(브라우저 로그인), `TMOD_LAN_OPEN=1`(사설 IP 무인증) |
+| 백업 / 복구 | `ops/backup.sh` → `data/backups/tmod-*.dump`, `data-*.tgz` (14일 보관) · `ops/restore.sh <dump>` |
+| 헬스 | `GET /api/health` → version, db, valhalla, osrm, disk_free_gb |
+| 서버(Docker) 배포 | 그래프 준비 후 `docker compose up -d` (postgres · osrm · valhalla · api), 공개 URL은 `--profile tunnel`. 환경: `PG_PASSWORD`, `TMOD_WEB_TOKEN`, `TMOD_USERS`, `OSRM_DIR`, `VALHALLA_DIR` |
+| 재부팅 후 (맥) | Docker Desktop 자동 시작 → 컨테이너 restart 정책 → launchd가 web/터널 기동. 확인: `ops/url.sh`, `/api/health` |
