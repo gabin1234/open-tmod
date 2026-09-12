@@ -1,6 +1,6 @@
 # P13 — 시나리오 ↔ Shipment 연결 (업로드 배치 → 시나리오 → 최적화)
 
-상태: REVIEW (승인 대기)
+상태: FROZEN (2026-09-12 승인)
 버전: 1.0 (P01 v2.1 additive `shipment.source_batch`, P05/P06 확장)
 
 ## 문제
