@@ -18,7 +18,7 @@ ENUM: `shipment_kind`(DELIVERY, PICKUP, PICKUP_DELIVERY), `day_of_week`, `solver
 
 ## 규칙
 - PK = identity bigint, 자연키는 UNIQUE(code) 별도. FK 전부 명시, ON DELETE는 결과·시나리오 자식만 CASCADE
-- 시간 = timestamptz, 거리 m, 시간 s, 무게 kg, 부피 m³ (변환은 ETL) — 단위 혼용 금지
+- 시간 = timestamptz, **거리 mi, 시간 s, 무게 lb, 부피 cuft, 비용 USD/mi** (v2.0 임페리얼, P12) — 단위 혼용 금지. Provider 내부(미터)는 DB 경계에서 변환
 - 하드코딩 금지 원칙의 DB 표현: `constraint_def.param_schema`(jsonb)로 파라미터 형태를 선언, `scenario_constraint.params`가 값
 - 샘플: LPHB-30260 depot, LMD 트럭 10대(BOX26 2MAN 500/600분), constraint 8종, objective 3종, Silver Avenue 예시 segment·adjustment, 시나리오 1개
 

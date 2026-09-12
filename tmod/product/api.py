@@ -15,7 +15,9 @@ from typing import Any
 import psycopg
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from psycopg.rows import dict_row
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
+
+CODE_RE = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,60}$"
 
 from tmod.product.db import SEED, dsn
 from tmod.product.etl import load_rows_xlsx, run_etl
@@ -24,12 +26,12 @@ from tmod.product.routing import OSRMProvider, ValhallaRoadProvider, route_detai
 from tmod.product.solve import run_scenario
 
 MASTERS: dict[str, tuple[str, list[str]]] = {   # table -> (natural key, writable columns)
-    "vehicle_type": ("type_code", ["name", "capacity_kg", "capacity_m3", "max_stops", "max_route_s", "max_distance_m", "fixed_cost", "cost_per_km", "cost_per_hour", "osrm_profile", "active_flag"]),
+    "vehicle_type": ("type_code", ["name", "capacity_lb", "capacity_cuft", "max_stops", "max_route_s", "max_distance_mi", "fixed_cost", "cost_per_mi", "cost_per_hour", "osrm_profile", "active_flag"]),
     "vehicle": ("vehicle_code", ["name", "vehicle_type_id", "depot_id", "crew_size", "work_limit_s", "duty_limit_s", "active_flag", "effective_from", "effective_to"]),
     "depot": ("depot_code", ["name", "location_id", "open_time", "close_time", "active_flag"]),
     "customer": ("customer_code", ["name", "customer_type", "default_location_id", "priority", "active_flag"]),
     "location": ("location_code", ["name", "address_line", "city", "state_code", "postal_code", "country_code", "latitude", "longitude", "active_flag"]),
-    "product": ("product_code", ["name", "category", "unit_weight_kg", "unit_volume_m3", "install_s", "active_flag"]),
+    "product": ("product_code", ["name", "category", "unit_weight_lb", "unit_volume_cuft", "install_s", "active_flag"]),
     "service_time_rule": ("rule_code", ["description", "customer_type", "product_category", "stop_base_s", "per_unit_s", "priority", "active_flag"]),
 }
 PROVIDERS = {"OSRM": OSRMProvider, "VALHALLA": ValhallaRoadProvider}
@@ -70,11 +72,16 @@ class Jobs:
 
 
 class ScenarioIn(BaseModel):
-    code: str
-    name: str
+    code: str = Field(pattern=CODE_RE, description="letters, digits, . _ - ; no spaces")
+    name: str = Field(min_length=1, max_length=120)
     plan_date: date
+
+    @field_validator("code", "name", mode="before")
+    @classmethod
+    def _strip(cls, v):
+        return v.strip() if isinstance(v, str) else v
     depot_code: str
-    provider: str = "VALHALLA"
+    provider: str = "VALHALLA"      # product UI uses Valhalla (truck costing, way_id segments); OSRM stays available for API callers
     time_limit_s: int = 30
     description: str | None = None
 
@@ -146,7 +153,7 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
     @r.get("/shipments")
     def shipments(date_: date | None = Query(None, alias="date"), limit: int = 500):
         with _conn() as c:
-            q = """SELECT sh.shipment_id, sh.source_ref, sh.order_ref, sh.kind, pl.location_code AS pickup_location_code, pl.postal_code AS pickup_postal_code, sh.requested_date, sh.window_start, sh.window_end, sh.service_s, sh.weight_kg, sh.volume_m3,
+            q = """SELECT sh.shipment_id, sh.source_ref, sh.order_ref, sh.kind, pl.location_code AS pickup_location_code, pl.postal_code AS pickup_postal_code, sh.requested_date, sh.window_start, sh.window_end, sh.service_s, sh.weight_lb, sh.volume_cuft,
                           sh.pieces, sh.priority, sh.optional_flag, l.location_code, l.address_line, l.city, l.postal_code, l.latitude, l.longitude, cu.customer_code, cu.name AS customer_name
                    FROM shipment sh JOIN location l ON l.location_id=sh.delivery_location_id LEFT JOIN customer cu ON cu.customer_id=sh.customer_id
                    LEFT JOIN location pl ON pl.location_id=sh.pickup_location_id WHERE sh.active_flag"""
@@ -199,7 +206,7 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
         s["adjustments"] = c.execute("""SELECT a.adjustment_id, g.segment_code, g.road_name, a.day_of_week, a.time_from, a.time_to, a.factor, a.reason, COALESCE(sa.enabled_flag,false) AS enabled
                                         FROM road_adjustment a JOIN road_segment g USING (segment_id) LEFT JOIN scenario_road_adjustment sa ON sa.adjustment_id=a.adjustment_id AND sa.scenario_id=%s
                                         WHERE a.active_flag ORDER BY g.road_name, a.day_of_week""", (sid,)).fetchall()
-        s["runs"] = c.execute("SELECT optimization_run_id, solver_status, vehicle_count, total_distance_m, total_route_s, total_cost, created_at FROM optimization_run WHERE scenario_id=%s ORDER BY 1 DESC", (sid,)).fetchall()
+        s["runs"] = c.execute("SELECT optimization_run_id, solver_status, vehicle_count, total_distance_mi, total_route_s, total_cost, created_at FROM optimization_run WHERE scenario_id=%s ORDER BY 1 DESC", (sid,)).fetchall()
         return _json(s)
 
     @r.get("/scenarios")
@@ -267,6 +274,9 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
 
     @r.post("/scenarios/{code}/copy", status_code=201)
     def scenario_copy(code: str, new_code: str, name: str | None = None):
+        new_code = new_code.strip()
+        if not re.match(CODE_RE, new_code):
+            raise HTTPException(422, "new_code: letters, digits, . _ - only")
         with _conn() as c:
             s = c.execute("SELECT * FROM scenario WHERE scenario_code=%s", (code,)).fetchone()
             if not s:
@@ -279,7 +289,7 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
                 raise HTTPException(409, "scenario code exists")
             sid = s["scenario_id"]
             c.execute("INSERT INTO scenario_shipment SELECT %s, shipment_id, override_window_start, override_window_end, override_service_s, override_priority FROM scenario_shipment WHERE scenario_id=%s", (nid, sid))
-            c.execute("INSERT INTO scenario_vehicle SELECT %s, vehicle_id, override_shift_start, override_shift_end, override_capacity_kg FROM scenario_vehicle WHERE scenario_id=%s", (nid, sid))
+            c.execute("INSERT INTO scenario_vehicle SELECT %s, vehicle_id, override_shift_start, override_shift_end, override_capacity_lb FROM scenario_vehicle WHERE scenario_id=%s", (nid, sid))
             c.execute("INSERT INTO scenario_constraint SELECT %s, constraint_code, enabled_flag, params FROM scenario_constraint WHERE scenario_id=%s", (nid, sid))
             c.execute("INSERT INTO scenario_objective_weight SELECT %s, objective_code, weight_pct FROM scenario_objective_weight WHERE scenario_id=%s", (nid, sid))
             c.execute("INSERT INTO scenario_road_adjustment SELECT %s, adjustment_id, enabled_flag FROM scenario_road_adjustment WHERE scenario_id=%s", (nid, sid))
@@ -289,7 +299,7 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
     @r.delete("/scenarios/{code}", status_code=204)
     def scenario_delete(code: str):
         with _conn() as c:
-            if c.execute("UPDATE scenario SET active_flag=false, status='ARCHIVED' WHERE scenario_code=%s", (code,)).rowcount == 0:
+            if c.execute("UPDATE scenario SET active_flag=false, status='ARCHIVED' WHERE scenario_code=%s AND active_flag", (code,)).rowcount == 0:
                 raise HTTPException(404, "scenario not found")
             c.commit()
 
@@ -330,15 +340,15 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
         if not run:
             raise HTTPException(404, "run not found")
         rows = c.execute("""SELECT x.vehicle_id, v.vehicle_code, x.route_sequence, x.stop_location_id, l.location_code, l.address_line, l.postal_code, l.latitude, l.longitude, x.shipment_id, sh.source_ref,
-                                   x.arrival_time, x.departure_time, x.wait_s, x.service_s, x.distance_from_previous_m, x.travel_time_from_previous_s, x.late_s, x.stop_kind, x.load_after_kg
+                                   x.arrival_time, x.departure_time, x.wait_s, x.service_s, x.distance_from_previous_mi, x.travel_time_from_previous_s, x.late_s, x.stop_kind, x.load_after_lb
                             FROM optimization_route x JOIN vehicle v USING (vehicle_id) JOIN location l ON l.location_id=x.stop_location_id LEFT JOIN shipment sh ON sh.shipment_id=x.shipment_id
                             WHERE x.optimization_run_id=%s ORDER BY v.vehicle_code, x.route_sequence""", (run_id,)).fetchall()
         prof = {"OSRM": "driving", "VALHALLA": "truck", "MANUAL": "test"}.get(run["distance_provider"], "driving")
         routes: dict[str, dict] = {}
         for x in rows:
-            v = routes.setdefault(x["vehicle_code"], {"vehicle_code": x["vehicle_code"], "stops": [], "distance_m": 0, "shipments": 0})
+            v = routes.setdefault(x["vehicle_code"], {"vehicle_code": x["vehicle_code"], "stops": [], "distance_mi": 0, "shipments": 0})
             v["stops"].append(x)
-            v["distance_m"] += x["distance_from_previous_m"]
+            v["distance_mi"] += x["distance_from_previous_mi"]
             v["shipments"] += x["shipment_id"] is not None
         prov = PROVIDERS.get(run["distance_provider"], lambda: None)() if detail else None
         plain = _conn(plain=True) if prov else None
@@ -376,7 +386,7 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
     def compare(a: int, b: int):
         with _conn() as c:
             ra, rb = _run(c, a), _run(c, b)
-        keys = ("vehicle_count", "total_distance_m", "total_drive_s", "total_service_s", "total_route_s", "total_cost")
+        keys = ("vehicle_count", "total_distance_mi", "total_drive_s", "total_service_s", "total_route_s", "total_cost")
         delta = {k: (None if ra.get(k) is None or rb.get(k) is None else float(rb[k]) - float(ra[k])) for k in keys}
         delta["unassigned"] = len(rb["unassigned"]) - len(ra["unassigned"])
         return {"a": {k: ra.get(k) for k in keys + ("scenario_code", "solver_status")} | {"unassigned": len(ra["unassigned"])},
@@ -386,12 +396,12 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
     @r.get("/segments")
     def segments(q: str = "", limit: int = 50):
         with _conn() as c:
-            return _json(c.execute("SELECT segment_id, segment_code, road_name, osm_way_id, length_m, geometry FROM road_segment WHERE road_name ILIKE %s ORDER BY road_name LIMIT %s", (f"%{q}%", limit)).fetchall())
+            return _json(c.execute("SELECT segment_id, segment_code, road_name, osm_way_id, length_mi, geometry FROM road_segment WHERE road_name ILIKE %s ORDER BY road_name LIMIT %s", (f"%{q}%", limit)).fetchall())
 
     @r.get("/segments/near")
     def segments_near(lat: float, lon: float, limit: int = 5):
         with _conn() as c:
-            rows = c.execute("SELECT segment_id, segment_code, road_name, osm_way_id, length_m, geometry FROM road_segment WHERE geometry IS NOT NULL").fetchall()
+            rows = c.execute("SELECT segment_id, segment_code, road_name, osm_way_id, length_mi, geometry FROM road_segment WHERE geometry IS NOT NULL").fetchall()
         def d2(g):
             return min((p[0] - lat) ** 2 + (p[1] - lon) ** 2 for p in g) if g else 9e9
         rows.sort(key=lambda s: d2(s["geometry"]))

@@ -41,7 +41,7 @@ def _db(pg, n_vehicles=2, cap_kg=1000, window=True):
     _OPEN.append(con)
     con.execute("SET search_path TO tmod")
     con.execute("UPDATE scenario SET distance_provider='MANUAL', time_limit_s=2, plan_date='2026-09-15'")
-    con.execute("UPDATE vehicle_type SET capacity_kg=%s, max_stops=NULL", (cap_kg,))
+    con.execute("UPDATE vehicle_type SET capacity_lb=%s, max_stops=NULL", (cap_kg,))
     con.execute("DELETE FROM scenario_vehicle WHERE vehicle_id NOT IN (SELECT vehicle_id FROM vehicle ORDER BY vehicle_code LIMIT %s)", (n_vehicles,))
     con.execute("UPDATE location SET latitude=33.50, longitude=-84.30 WHERE location_code='HUB-LPHB-30260'")
     ss = con.execute("SELECT source_system_id FROM source_system WHERE system_code='XLSX'").fetchone()[0]
@@ -50,7 +50,7 @@ def _db(pg, n_vehicles=2, cap_kg=1000, window=True):
         locs[i] = con.execute("INSERT INTO location (location_code, latitude, longitude) VALUES (%s,%s,%s) RETURNING location_id", (f"L{i}", la, lo)).fetchone()[0]
     ws, we = (datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc), datetime(2026, 9, 15, 16, 0, tzinfo=timezone.utc)) if window else (None, None)  # 08:00-12:00 New York
     for i in range(6):
-        con.execute("""INSERT INTO shipment (source_system_id, source_ref, delivery_location_id, requested_date, window_start, window_end, service_s, weight_kg, pieces)
+        con.execute("""INSERT INTO shipment (source_system_id, source_ref, delivery_location_id, requested_date, window_start, window_end, service_s, weight_lb, pieces)
                        VALUES (%s,%s,%s,'2026-09-15',%s,%s,%s,%s,1)""", (ss, f"S{i}", locs[i % 3], ws, we, 600, 300))
     con.commit()
     sid = con.execute("SELECT scenario_id FROM scenario").fetchone()[0]
@@ -61,7 +61,7 @@ def _db(pg, n_vehicles=2, cap_kg=1000, window=True):
 
 
 def _routes(con, run_id):
-    return con.execute("SELECT vehicle_id, route_sequence, shipment_id, arrival_time, service_s, distance_from_previous_m, late_s FROM optimization_route WHERE optimization_run_id=%s ORDER BY vehicle_id, route_sequence", (run_id,)).fetchall()
+    return con.execute("SELECT vehicle_id, route_sequence, shipment_id, arrival_time, service_s, distance_from_previous_mi, late_s FROM optimization_route WHERE optimization_run_id=%s ORDER BY vehicle_id, route_sequence", (run_id,)).fetchall()
 
 
 def test_solve_basic_capacity_window(pg):
@@ -79,8 +79,8 @@ def test_solve_basic_capacity_window(pg):
             per_vehicle[r[0]] = per_vehicle.get(r[0], 0) + 300
     assert all(v <= 1000 for v in per_vehicle.values())
     assert all(r[6] == 0 for r in rows) and all(r[3].astimezone(data.tz).hour >= 8 for r in rows)
-    run = con.execute("SELECT solver_status, vehicle_count, total_distance_m, total_route_s, total_cost, total_service_s FROM optimization_run WHERE optimization_run_id=%s", (res.run_id,)).fetchone()
-    assert run[1] == res.vehicles and run[2] == sum(r[5] for r in rows) and run[5] == 6 * 600 + 3 * 1200 and run[4] > 0
+    run = con.execute("SELECT solver_status, vehicle_count, total_distance_mi, total_route_s, total_cost, total_service_s FROM optimization_run WHERE optimization_run_id=%s", (res.run_id,)).fetchone()
+    assert run[1] == res.vehicles and abs(float(run[2]) - float(sum(r[5] for r in rows))) < 0.05 and run[5] == 6 * 600 + 3 * 1200 and run[4] > 0
     assert con.execute("SELECT status FROM scenario").fetchone()[0] == "DONE"
     con.close()
 

@@ -4,13 +4,17 @@ const api = async (path, opt = {}) => {
   const r = await fetch(path, opt);
   if (r.status === 204) return null;
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.detail ? (typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail)) : r.status);
+  if (!r.ok) {
+    let msg = j.detail;
+    if (Array.isArray(msg)) msg = msg.map(e => `${(e.loc || []).slice(1).join(".")}: ${e.msg}`).join("; ");   // pydantic 422
+    throw new Error(msg ? String(msg) : `HTTP ${r.status}`);
+  }
   return j;
 };
 const J = (path, method, body) => api(path, {method, headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
 const fmt = (v, d = 0) => v == null ? "–" : Number(v).toLocaleString(undefined, {maximumFractionDigits: d});
 const hm = iso => iso ? new Date(iso).toLocaleTimeString("en-US", {hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/New_York"}) : "";
-const mi = m => fmt(m / 1609.34, 1);
+const mi = m => fmt(m, 1);   // distances are already miles
 const COLORS = ["#1f77b4", "#d62728", "#2ca02c", "#9467bd", "#ff7f0e", "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#7f7f7f"];
 const state = {scenario: null, runs: [], map: null, layer: null, rmap: null, rlayer: null, seg: null, run: null};
 
@@ -44,10 +48,13 @@ async function loadScenarios() {
 }
 
 async function createScenario() {
+  const code = $("sc-code").value.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,60}$/.test(code)) { $("sc-create-msg").innerHTML = '<span class="err">code is required: letters, digits, . _ - (no spaces)</span>'; $("sc-code").focus(); return; }
+  if (!$("sc-date").value) { $("sc-create-msg").innerHTML = '<span class="err">plan date is required</span>'; return; }
   $("sc-create-msg").textContent = "…";
   try {
-    const s = await J("/api/v2/scenarios", "POST", {code: $("sc-code").value.trim(), name: $("sc-name").value || $("sc-code").value, plan_date: $("sc-date").value,
-      depot_code: $("sc-depot").value, provider: $("sc-prov").value, time_limit_s: Number($("sc-tl").value || 30)});
+    const s = await J("/api/v2/scenarios", "POST", {code, name: $("sc-name").value.trim() || code, plan_date: $("sc-date").value,
+      depot_code: $("sc-depot").value, provider: "VALHALLA", time_limit_s: Number($("sc-tl").value || 30)});
     $("sc-create-msg").textContent = `created · ${s.populated} shipments for ${s.plan_date}`;
     await loadScenarios(); openScenario(s.scenario_code);
   } catch (e) { $("sc-create-msg").innerHTML = `<span class="err">${e.message}</span>`; }
@@ -63,11 +70,11 @@ async function openScenario(code) {
   const vehicles = await api("/api/v2/master/vehicle");
   const veh = vehicles.map(v => `<label style="display:inline-block;width:31%;margin:2px 0"><input type="checkbox" data-v="${v.vehicle_code}" ${s.vehicles.includes(v.vehicle_code) ? "checked" : ""}> ${v.vehicle_code}</label>`).join("");
   const adj = s.adjustments.map(a => `<label style="margin:2px 0"><input type="checkbox" data-a="${a.adjustment_id}" ${a.enabled ? "checked" : ""}> ${a.road_name} ${a.day_of_week || "daily"} ${a.time_from.slice(0, 5)}–${a.time_to.slice(0, 5)} ×${a.factor} <span class="muted">${a.reason || ""}</span></label>`).join("") || '<div class="muted">no road adjustments defined (Road Weight tab)</div>';
-  const runs = s.runs.map(r => `<tr data-run="${r.optimization_run_id}"><td>#${r.optimization_run_id}</td><td><span class="badge ${r.solver_status}">${r.solver_status}</span></td><td class="num">${fmt(r.vehicle_count)}</td><td class="num">${r.total_distance_m == null ? "–" : mi(r.total_distance_m)}</td><td class="num">${r.total_route_s == null ? "–" : fmt(r.total_route_s / 60)}</td><td class="num">${r.total_cost == null ? "–" : "$" + fmt(r.total_cost)}</td><td class="muted">${r.created_at.slice(5, 16).replace("T", " ")}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">no runs</td></tr>';
+  const runs = s.runs.map(r => `<tr data-run="${r.optimization_run_id}"><td>#${r.optimization_run_id}</td><td><span class="badge ${r.solver_status}">${r.solver_status}</span></td><td class="num">${fmt(r.vehicle_count)}</td><td class="num">${r.total_distance_mi == null ? "–" : mi(r.total_distance_mi)}</td><td class="num">${r.total_route_s == null ? "–" : fmt(r.total_route_s / 60)}</td><td class="num">${r.total_cost == null ? "–" : "$" + fmt(r.total_cost)}</td><td class="muted">${r.created_at.slice(5, 16).replace("T", " ")}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">no runs</td></tr>';
   $("sc-detail").innerHTML = `
    <div class="card"><h3>${s.scenario_code} <span class="badge ${s.status}">${s.status}</span></h3>
     <div class="row"><label>name<input id="e-name" value="${s.name}"></label><label>plan date<input value="${s.plan_date}" disabled></label><label>depot<input value="${s.depot_code}" disabled></label>
-     <label>provider<select id="e-prov"><option ${s.distance_provider === "VALHALLA" ? "selected" : ""}>VALHALLA</option><option ${s.distance_provider === "OSRM" ? "selected" : ""}>OSRM</option></select></label><label>time limit s<input id="e-tl" type="number" value="${s.time_limit_s}"></label></div>
+     <label>road routing<input value="Valhalla · truck (${s.distance_provider})" disabled></label><label>time limit s<input id="e-tl" type="number" value="${s.time_limit_s}"></label></div>
     <label style="margin-top:6px"><input type="checkbox" id="e-multidepot" ${s.settings && s.settings.multi_depot ? "checked" : ""}> multi-depot: vehicles start and end at their own depot</label>
     <div class="muted" style="margin-top:6px">shipments in scenario: <b>${s.shipment_count}</b> <button class="btn" id="e-populate" style="padding:1px 8px;font-size:12px">populate from ${s.plan_date}</button></div>
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="e-save">Save</button><button class="btn primary" id="e-run">Optimize</button><button class="btn" id="e-copy">Copy</button><button class="btn danger" id="e-del">Delete</button><span id="e-msg" class="muted"></span></div></div>
@@ -90,11 +97,15 @@ function collectScenarioEdits() {
   document.querySelectorAll("#sc-detail input[data-w]").forEach(i => { if (Number(i.value) > 0) weights[i.dataset.w] = Number(i.value); });
   const vehicles = [...document.querySelectorAll("#sc-detail input[data-v]:checked")].map(i => i.dataset.v);
   const settings = {...(state.scenario.settings || {}), multi_depot: $("e-multidepot").checked};
-  return {name: $("e-name").value, provider: $("e-prov").value, time_limit_s: Number($("e-tl").value), constraints, weights, vehicles, settings};
+  const wsum = Object.values(weights).reduce((a, b) => a + b, 0);
+  if (Math.abs(wsum - 100) > 0.01) throw new Error(`objective weights must sum to 100 (now ${wsum})`);
+  if (!vehicles.length) throw new Error("select at least one vehicle");
+  return {name: $("e-name").value.trim(), provider: "VALHALLA", time_limit_s: Number($("e-tl").value) || 30, constraints, weights, vehicles, settings};
 }
 
 async function saveScenario() {
-  try { await J(`/api/v2/scenarios/${state.scenario.scenario_code}`, "PUT", collectScenarioEdits()); $("e-msg").textContent = "saved"; openScenario(state.scenario.scenario_code); }
+  if (!$("e-name").value.trim()) { $("e-msg").innerHTML = '<span class="err">name is required</span>'; return; }
+  try { await J(`/api/v2/scenarios/${encodeURIComponent(state.scenario.scenario_code)}`, "PUT", collectScenarioEdits()); $("e-msg").textContent = "saved"; await openScenario(state.scenario.scenario_code); $("e-msg").textContent = "saved"; }
   catch (e) { $("e-msg").innerHTML = `<span class="err">${e.message}</span>`; }
 }
 
@@ -106,7 +117,7 @@ async function runScenario() {
     $("e-msg").textContent = "optimizing…";
     const poll = async () => {
       const r = await api(`/api/v2/jobs/${j.job_id}`);
-      if (r.status === "done") { $("e-msg").textContent = `done: ${r.result.status} · ${r.result.vehicles} vehicles · ${mi(r.result.total_distance_m)} mi · $${fmt(r.result.total_cost)}`; openScenario(code); }
+      if (r.status === "done") { $("e-msg").textContent = `done: ${r.result.status} · ${r.result.vehicles} vehicles · ${mi(r.result.total_distance_mi)} mi · $${fmt(r.result.total_cost)}`; openScenario(code); }
       else if (r.status === "error") $("e-msg").innerHTML = `<span class="err">${r.error}</span>`;
       else setTimeout(poll, 1500);
     };
@@ -115,15 +126,19 @@ async function runScenario() {
 }
 
 async function copyScenario() {
-  const code = prompt("new scenario code", state.scenario.scenario_code + "-COPY");
+  const code = (prompt("new scenario code", state.scenario.scenario_code + "-COPY") || "").trim();
   if (!code) return;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,60}$/.test(code)) { $("e-msg").innerHTML = '<span class="err">code: letters, digits, . _ - only</span>'; return; }
   try { const s = await api(`/api/v2/scenarios/${state.scenario.scenario_code}/copy?new_code=${encodeURIComponent(code)}`, {method: "POST"}); await loadScenarios(); openScenario(s.scenario_code); }
   catch (e) { $("e-msg").innerHTML = `<span class="err">${e.message}</span>`; }
 }
 
 async function deleteScenario() {
-  if (!confirm(`archive ${state.scenario.scenario_code}?`)) return;
-  await api(`/api/v2/scenarios/${state.scenario.scenario_code}`, {method: "DELETE"});
+  const code = state.scenario && state.scenario.scenario_code;
+  if (!code) { $("e-msg").innerHTML = '<span class="err">no scenario selected</span>'; return; }
+  if (!confirm(`Archive scenario ${code}? Its runs stay in the database but it disappears from the list.`)) return;
+  try { await api(`/api/v2/scenarios/${encodeURIComponent(code)}`, {method: "DELETE"}); }
+  catch (e) { $("e-msg").innerHTML = `<span class="err">${e.message}</span>`; return; }
   state.scenario = null; $("sc-detail").innerHTML = '<div class="muted">select a scenario</div>'; loadScenarios();
 }
 
@@ -156,7 +171,7 @@ async function loadRun() {
   $("run-meta").textContent = "loading…";
   const r = await api(`/api/v2/runs/${id}?detail=${$("run-detail").checked ? 1 : 0}`);
   state.run = r;
-  $("run-meta").textContent = `${r.scenario_code} · ${r.solver_status} · ${fmt(r.vehicle_count)} vehicles · ${mi(r.total_distance_m)} mi · drive ${fmt(r.total_drive_s / 60)} min · service ${fmt(r.total_service_s / 60)} min · $${fmt(r.total_cost)}`;
+  $("run-meta").textContent = `${r.scenario_code} · ${r.solver_status} · ${fmt(r.vehicle_count)} vehicles · ${mi(r.total_distance_mi)} mi · drive ${fmt(r.total_drive_s / 60)} min · service ${fmt(r.total_service_s / 60)} min · $${fmt(r.total_cost)}`;
   state.layer.clearLayers();
   const depots = {};
   r.routes.forEach(v => { const d = v.stops[0]; if (d) depots[d.location_code] = d; });
@@ -165,20 +180,20 @@ async function loadRun() {
     const color = COLORS[i % COLORS.length];
     const pts = v.stops.map(s => [s.latitude, s.longitude]);
     const road = v.legs.some(l => l.geometry) ? v.legs.map((l, k) => l.geometry || [pts[k], pts[k + 1]]) : [pts];
-    L.polyline(road, {color, weight: 3, opacity: .85}).bindTooltip(`${v.vehicle_code} · ${v.shipments} shipments · ${mi(v.distance_m)} mi`).addTo(state.layer);
+    L.polyline(road, {color, weight: 3, opacity: .85}).bindTooltip(`${v.vehicle_code} · ${v.shipments} shipments · ${mi(v.distance_mi)} mi`).addTo(state.layer);
     let n = 0;
     v.stops.forEach(s => { if (!s.shipment_id) return; n++; L.circleMarker([s.latitude, s.longitude], {radius: 9, color, fillColor: "#fff", fillOpacity: 1, weight: 2}).bindTooltip(`${v.vehicle_code} #${n} ${s.stop_kind === "PICKUP" ? "pickup " : ""}${s.source_ref} · ${hm(s.arrival_time)} · ${s.address_line || s.postal_code || ""}`).addTo(state.layer);
       L.marker([s.latitude, s.longitude], {icon: L.divIcon({className: "", html: `<div style="font:bold 10px system-ui;color:${color};text-align:center;width:18px;margin-left:-9px;margin-top:-6px">${n}</div>`})}).addTo(state.layer); });
   });
   if (state.layer.getLayers().length) state.map.fitBounds(state.layer.getBounds().pad(0.1));
-  $("run-vehicles").querySelector("tbody").innerHTML = r.routes.map((v, i) => `<tr data-i="${i}"><td><span style="color:${COLORS[i % COLORS.length]}">■</span> ${v.vehicle_code}</td><td class="num">${v.shipments}</td><td class="num">${mi(v.distance_m)}</td><td>${hm(v.stops[0].departure_time)} → ${hm(v.stops[v.stops.length - 1].arrival_time)}</td></tr>`).join("");
+  $("run-vehicles").querySelector("tbody").innerHTML = r.routes.map((v, i) => `<tr data-i="${i}"><td><span style="color:${COLORS[i % COLORS.length]}">■</span> ${v.vehicle_code}</td><td class="num">${v.shipments}</td><td class="num">${mi(v.distance_mi)}</td><td>${hm(v.stops[0].departure_time)} → ${hm(v.stops[v.stops.length - 1].arrival_time)}</td></tr>`).join("");
   $("run-vehicles").querySelectorAll("tr[data-i]").forEach(tr => tr.onclick = () => showSeq(r.routes[Number(tr.dataset.i)]));
   if (r.routes[0]) showSeq(r.routes[0]);
   $("run-un").innerHTML = r.unassigned.length ? r.unassigned.map(u => `${u.source_ref} <span class="muted">${u.reason}</span>`).join("<br>") : "none";
 }
 
 function showSeq(v) {
-  $("run-seq").querySelector("tbody").innerHTML = v.stops.map(s => `<tr><td>${s.route_sequence}</td><td>${s.shipment_id ? (s.stop_kind === "PICKUP" ? "▲ " : "") + s.source_ref : "depot"}<div class="muted">${s.address_line || s.location_code}${s.load_after_kg != null && s.stop_kind !== "DELIVERY" ? " · load " + fmt(s.load_after_kg) + " kg" : ""}</div></td><td>${hm(s.arrival_time)}</td><td>${hm(s.departure_time)}</td><td class="num">${fmt(s.service_s / 60)}</td><td class="num">${mi(s.distance_from_previous_m)}</td><td class="num">${s.late_s ? fmt(s.late_s / 60) : ""}</td></tr>`).join("");
+  $("run-seq").querySelector("tbody").innerHTML = v.stops.map(s => `<tr><td>${s.route_sequence}</td><td>${s.shipment_id ? (s.stop_kind === "PICKUP" ? "▲ " : "") + s.source_ref : "depot"}<div class="muted">${s.address_line || s.location_code}${s.load_after_lb != null && s.stop_kind !== "DELIVERY" ? " · load " + fmt(s.load_after_lb) + " lb" : ""}</div></td><td>${hm(s.arrival_time)}</td><td>${hm(s.departure_time)}</td><td class="num">${fmt(s.service_s / 60)}</td><td class="num">${mi(s.distance_from_previous_mi)}</td><td class="num">${s.late_s ? fmt(s.late_s / 60) : ""}</td></tr>`).join("");
 }
 
 // ---------- shipments ----------
@@ -190,10 +205,10 @@ async function loadShipmentDates() {
 }
 async function loadShipments() {
   const rows = await api(`/api/v2/shipments?date=${$("sh-date").value}&limit=1000`);
-  $("sh-list").querySelector("tbody").innerHTML = rows.map(s => `<tr><td>${s.source_ref}</td><td>${s.order_ref || ""}</td><td>${s.kind === "DELIVERY" ? "" : s.kind + (s.pickup_postal_code ? " from " + s.pickup_postal_code : "")}</td><td>${s.customer_name || s.customer_code || ""}</td><td>${s.address_line || ""}</td><td>${s.postal_code || ""}</td><td class="num">${fmt(s.weight_kg)}</td><td class="num">${fmt(s.volume_m3, 2)}</td><td class="num">${fmt(s.service_s / 60)}</td><td>${s.window_start ? hm(s.window_start) + "–" + hm(s.window_end) : ""}</td><td class="num">${s.priority ?? ""}</td><td>${s.optional_flag ? "opt" : ""}</td></tr>`).join("");
+  $("sh-list").querySelector("tbody").innerHTML = rows.map(s => `<tr><td>${s.source_ref}</td><td>${s.order_ref || ""}</td><td>${s.kind === "DELIVERY" ? "" : s.kind + (s.pickup_postal_code ? " from " + s.pickup_postal_code : "")}</td><td>${s.customer_name || s.customer_code || ""}</td><td>${s.address_line || ""}</td><td>${s.postal_code || ""}</td><td class="num">${fmt(s.weight_lb)}</td><td class="num">${fmt(s.volume_cuft, 1)}</td><td class="num">${fmt(s.service_s / 60)}</td><td>${s.window_start ? hm(s.window_start) + "–" + hm(s.window_end) : ""}</td><td class="num">${s.priority ?? ""}</td><td>${s.optional_flag ? "opt" : ""}</td></tr>`).join("");
 }
 async function uploadShipments() {
-  const f = $("sh-file").files[0]; if (!f) { alert("choose an .xlsx"); return; }
+  const f = $("sh-file").files[0]; if (!f) { $("sh-msg").innerHTML = '<span class="err">choose an .xlsx file first</span>'; return; }
   const fd = new FormData(); fd.append("file", f);
   try { const r = await api("/api/v2/shipments/upload", {method: "POST", body: fd}); $("sh-msg").textContent = `ok: ${r.shipments} shipments, ${r.locations} locations, skipped ${JSON.stringify(r.skipped)}`; loadShipmentDates(); }
   catch (e) { $("sh-msg").innerHTML = `<span class="err">${e.message}</span>`; }
@@ -206,7 +221,7 @@ async function refreshShipments() {
 }
 
 // ---------- vehicles ----------
-const VT_COLS = ["type_code", "name", "capacity_kg", "capacity_m3", "max_stops", "max_route_s", "fixed_cost", "cost_per_km", "cost_per_hour"];
+const VT_COLS = ["type_code", "name", "capacity_lb", "capacity_cuft", "max_stops", "max_route_s", "fixed_cost", "cost_per_mi", "cost_per_hour"];
 const V_COLS = ["vehicle_code", "name", "vehicle_type_id", "depot_id", "crew_size", "work_limit_s", "duty_limit_s"];
 async function loadVehicles() {
   const [types, vehicles] = await Promise.all([api("/api/v2/master/vehicle_type"), api("/api/v2/master/vehicle")]);
@@ -222,8 +237,9 @@ async function loadVehicles() {
     $(tableId).querySelectorAll("[data-del]").forEach(b => b.onclick = async () => { await api(`/api/v2/master/${table}/${b.dataset.del}`, {method: "DELETE"}); loadVehicles(); });
   };
   wire("vt-list", VT_COLS, "type_code", "vehicle_type"); wire("v-list", V_COLS, "vehicle_code", "vehicle");
-  $("vt-add").onclick = () => { const code = prompt("type code"); if (code) J("/api/v2/master/vehicle_type", "POST", {type_code: code, name: code}).then(loadVehicles).catch(e => alert(e.message)); };
-  $("v-add").onclick = () => { const code = prompt("vehicle code"); if (code && types[0]) J("/api/v2/master/vehicle", "POST", {vehicle_code: code, vehicle_type_id: types[0].vehicle_type_id, depot_id: vehicles[0] ? vehicles[0].depot_id : 1}).then(loadVehicles).catch(e => alert(e.message)); };
+  const err = e => { $("v-msg").innerHTML = `<span class="err">${e.message}</span>`; };
+  $("vt-add").onclick = () => { const code = (prompt("type code") || "").trim(); if (code) J("/api/v2/master/vehicle_type", "POST", {type_code: code, name: code}).then(loadVehicles).catch(err); };
+  $("v-add").onclick = () => { const code = (prompt("vehicle code") || "").trim(); if (code && types[0]) J("/api/v2/master/vehicle", "POST", {vehicle_code: code, vehicle_type_id: types[0].vehicle_type_id, depot_id: vehicles[0] ? vehicles[0].depot_id : 1}).then(loadVehicles).catch(err); };
 }
 
 // ---------- road weight ----------
@@ -237,7 +253,7 @@ function initRoadMap() {
   $("adj-save").onclick = saveAdjustment;
 }
 function renderSegs(segs) {
-  $("seg-list").innerHTML = segs.map(s => `<div><a href="#" data-seg="${s.segment_code}">${s.road_name}</a> <span class="muted">${s.segment_code} · ${fmt(s.length_m)} m</span></div>`).join("") || '<div class="muted">no segments yet — segments are registered when routes are computed with road geometry (Map / Result, road geometry on)</div>';
+  $("seg-list").innerHTML = segs.map(s => `<div><a href="#" data-seg="${s.segment_code}">${s.road_name}</a> <span class="muted">${s.segment_code} · ${fmt(s.length_mi)} m</span></div>`).join("") || '<div class="muted">no segments yet — segments are registered when routes are computed with road geometry (Map / Result, road geometry on)</div>';
   $("seg-list").querySelectorAll("a[data-seg]").forEach(a => a.onclick = ev => { ev.preventDefault(); selectSeg(segs.find(s => s.segment_code === a.dataset.seg)); });
 }
 function selectSeg(s) {
@@ -262,7 +278,7 @@ async function loadAdjustments() {
 $("cmp-go").onclick = async () => {
   const c = await api(`/api/v2/compare?a=${$("cmp-a").value}&b=${$("cmp-b").value}`);
   const rows = [["scenario", c.a.scenario_code, c.b.scenario_code, ""], ["status", c.a.solver_status, c.b.solver_status, ""],
-    ["vehicles", c.a.vehicle_count, c.b.vehicle_count, c.delta.vehicle_count], ["distance mi", mi(c.a.total_distance_m), mi(c.b.total_distance_m), c.delta.total_distance_m == null ? "" : mi(c.delta.total_distance_m)],
+    ["vehicles", c.a.vehicle_count, c.b.vehicle_count, c.delta.vehicle_count], ["distance mi", mi(c.a.total_distance_mi), mi(c.b.total_distance_mi), c.delta.total_distance_mi == null ? "" : mi(c.delta.total_distance_mi)],
     ["drive min", fmt(c.a.total_drive_s / 60), fmt(c.b.total_drive_s / 60), c.delta.total_drive_s == null ? "" : fmt(c.delta.total_drive_s / 60)], ["service min", fmt(c.a.total_service_s / 60), fmt(c.b.total_service_s / 60), c.delta.total_service_s == null ? "" : fmt(c.delta.total_service_s / 60)],
     ["route min", fmt(c.a.total_route_s / 60), fmt(c.b.total_route_s / 60), c.delta.total_route_s == null ? "" : fmt(c.delta.total_route_s / 60)], ["cost $", fmt(c.a.total_cost), fmt(c.b.total_cost), c.delta.total_cost == null ? "" : fmt(c.delta.total_cost)],
     ["unassigned", c.a.unassigned, c.b.unassigned, c.delta.unassigned]];

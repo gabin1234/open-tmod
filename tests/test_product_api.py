@@ -28,13 +28,13 @@ def client(pg, tmp_path, monkeypatch):
     con = psycopg.connect(pg)
     con.execute("SET search_path TO tmod")
     con.execute("UPDATE location SET latitude=33.50, longitude=-84.30 WHERE location_code='HUB-LPHB-30260'")
-    con.execute("UPDATE vehicle_type SET capacity_kg=1000, max_stops=NULL")
+    con.execute("UPDATE vehicle_type SET capacity_lb=1000, max_stops=NULL")
     ss = con.execute("SELECT source_system_id FROM source_system WHERE system_code='XLSX'").fetchone()[0]
     ids = [con.execute("SELECT location_id FROM location WHERE location_code='HUB-LPHB-30260'").fetchone()[0]]
     for i, (la, lo) in enumerate([(33.51, -84.30), (33.52, -84.30), (33.50, -84.29)]):
         ids.append(con.execute("INSERT INTO location (location_code, latitude, longitude) VALUES (%s,%s,%s) RETURNING location_id", (f"L{i}", la, lo)).fetchone()[0])
     for i in range(6):
-        con.execute("INSERT INTO shipment (source_system_id, source_ref, delivery_location_id, requested_date, service_s, weight_kg) VALUES (%s,%s,%s,'2026-09-20',600,300)", (ss, f"S{i}", ids[1 + i % 3]))
+        con.execute("INSERT INTO shipment (source_system_id, source_ref, delivery_location_id, requested_date, service_s, weight_lb) VALUES (%s,%s,%s,'2026-09-20',600,300)", (ss, f"S{i}", ids[1 + i % 3]))
     con.commit()
     fill_distance_cache(con, Grid(), ids)
     con.close()
@@ -43,9 +43,9 @@ def client(pg, tmp_path, monkeypatch):
 
 
 def test_masters(client):
-    r = client.post("/api/v2/master/vehicle_type", json={"type_code": "VAN", "name": "Van", "capacity_kg": 800, "fixed_cost": 100})
-    assert r.status_code == 201 and r.json()["capacity_kg"] == 800
-    assert client.post("/api/v2/master/vehicle_type", json={"type_code": "VAN", "capacity_kg": 900}).json()["capacity_kg"] == 900
+    r = client.post("/api/v2/master/vehicle_type", json={"type_code": "VAN", "name": "Van", "capacity_lb": 800, "fixed_cost": 100})
+    assert r.status_code == 201 and r.json()["capacity_lb"] == 800
+    assert client.post("/api/v2/master/vehicle_type", json={"type_code": "VAN", "capacity_lb": 900}).json()["capacity_lb"] == 900
     assert client.post("/api/v2/master/vehicle_type", json={"type_code": "X", "bogus": 1}).status_code == 422
     assert client.delete("/api/v2/master/vehicle_type/VAN").status_code == 204
     assert "VAN" not in {x["type_code"] for x in client.get("/api/v2/master/vehicle_type").json()}
@@ -74,7 +74,7 @@ def test_scenario_lifecycle_and_compare(client):
     assert client.get("/api/v2/scenarios/SC-A").json()["weights"][0]["weight_pct"] in (0, 100)  # original untouched: still VEHICLE_COUNT 100
     rid2 = client.post("/api/v2/scenarios/SC-B/run?wait=1").json()["result"]["run_id"]
     cmp = client.get(f"/api/v2/compare?a={rid}&b={rid2}").json()
-    assert set(cmp["delta"]) >= {"vehicle_count", "total_distance_m", "total_cost", "unassigned"} and cmp["a"]["scenario_code"] == "SC-A"
+    assert set(cmp["delta"]) >= {"vehicle_count", "total_distance_mi", "total_cost", "unassigned"} and cmp["a"]["scenario_code"] == "SC-A"
     lst = client.get("/api/v2/scenarios").json()
     assert {s["scenario_code"] for s in lst} >= {"SC-A", "SC-B"} and [s for s in lst if s["scenario_code"] == "SC-A"][0]["runs"] == 1
     assert client.delete("/api/v2/scenarios/SC-B").status_code == 204
@@ -123,8 +123,18 @@ def test_shipments_upload_and_list(client, tmp_path):
     r = client.post("/api/v2/shipments/upload", files={"file": ("u.xlsx", open(p, "rb"), "application/octet-stream")})
     assert r.status_code == 201 and r.json()["shipments"] == 1, r.text
     rows = client.get("/api/v2/shipments?date=2026-09-21").json()
-    assert len(rows) == 1 and rows[0]["source_ref"] == "U1" and rows[0]["customer_name"] == "Ann" and abs(rows[0]["weight_kg"] - 45.36) < 0.01
+    assert len(rows) == 1 and rows[0]["source_ref"] == "U1" and rows[0]["customer_name"] == "Ann" and rows[0]["weight_lb"] == 100
     assert client.post("/api/v2/shipments/upload", files={"file": ("u.csv", b"x", "text/csv")}).status_code == 400
+
+
+def test_scenario_validation(client):
+    assert client.post("/api/v2/scenarios", json={"code": "", "name": "x", "plan_date": "2026-09-20", "depot_code": "LPHB-30260"}).status_code == 422
+    assert client.post("/api/v2/scenarios", json={"code": "bad code", "name": "x", "plan_date": "2026-09-20", "depot_code": "LPHB-30260"}).status_code == 422
+    assert client.post("/api/v2/scenarios", json={"code": "OK-1", "name": "  ", "plan_date": "2026-09-20", "depot_code": "LPHB-30260"}).status_code == 422
+    r = client.post("/api/v2/scenarios", json={"code": " OK-1 ", "name": " fine ", "plan_date": "2026-09-20", "depot_code": "LPHB-30260"})
+    assert r.status_code == 201 and r.json()["scenario_code"] == "OK-1" and r.json()["name"] == "fine"
+    assert client.post("/api/v2/scenarios/OK-1/copy?new_code=bad%20code").status_code == 422
+    assert client.delete("/api/v2/scenarios/OK-1").status_code == 204 and client.delete("/api/v2/scenarios/OK-1").status_code == 404
 
 
 def test_no_db_returns_503(tmp_path, monkeypatch):

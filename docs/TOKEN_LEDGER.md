@@ -41,3 +41,4 @@
 | P09 | Phase 3 dynamic traffic + profile + priority | ~22k | ~14k | ~1.26M | traffic_profile, iterative re-timing, priority penalty; test hang fix (idle-in-transaction) |
 | P10 | historical traffic_profile from Atlanta 1Y | ~14k | ~9k | ~1.28M | scripts/traffic_profile_from_history.py, tmod/product/history.py |
 | P11 | ops: compose, Dockerfile, basic auth, backup, health | ~24k | ~16k | ~1.32M | docker-compose.yml, ops/backup.sh+plist, auth v1.1 |
+| P12 | imperial units, Valhalla-only UI, UI hardening | ~30k | ~20k | ~1.37M | db/ddl/002_imperial.sql, renames, alert() removal |

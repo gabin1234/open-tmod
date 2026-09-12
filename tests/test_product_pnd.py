@@ -41,7 +41,7 @@ def _db(pg, cap_kg=600, n_vehicles=2):
     con.execute("SET search_path TO tmod")
     con.execute("UPDATE scenario SET distance_provider='MANUAL', time_limit_s=2, plan_date='2026-09-15'")
     con.execute("UPDATE scenario_constraint SET enabled_flag=false WHERE constraint_code='TIME_WINDOW'")
-    con.execute("UPDATE vehicle_type SET capacity_kg=%s, max_stops=NULL", (cap_kg,))
+    con.execute("UPDATE vehicle_type SET capacity_lb=%s, max_stops=NULL", (cap_kg,))
     con.execute("DELETE FROM scenario_vehicle WHERE vehicle_id NOT IN (SELECT vehicle_id FROM vehicle ORDER BY vehicle_code LIMIT %s)", (n_vehicles,))
     con.execute("UPDATE location SET latitude=33.50, longitude=-84.30 WHERE location_code='HUB-LPHB-30260'")
     ss = con.execute("SELECT source_system_id FROM source_system WHERE system_code='XLSX'").fetchone()[0]
@@ -53,7 +53,7 @@ def _db(pg, cap_kg=600, n_vehicles=2):
 
 
 def _rows(con, run_id):
-    return con.execute("""SELECT v.vehicle_code, x.route_sequence, s.source_ref, x.stop_kind, x.load_after_kg, x.stop_location_id
+    return con.execute("""SELECT v.vehicle_code, x.route_sequence, s.source_ref, x.stop_kind, x.load_after_lb, x.stop_location_id
                           FROM optimization_route x JOIN vehicle v USING (vehicle_id) LEFT JOIN shipment s USING (shipment_id)
                           WHERE optimization_run_id=%s ORDER BY v.vehicle_code, x.route_sequence""", (run_id,)).fetchall()
 
@@ -61,8 +61,8 @@ def _rows(con, run_id):
 def test_pickup_delivery_pair(pg):
     con, ss, L = _db(pg, cap_kg=600, n_vehicles=2)
     for i in range(4):
-        con.execute("INSERT INTO shipment (source_system_id, source_ref, delivery_location_id, requested_date, service_s, weight_kg) VALUES (%s,%s,%s,'2026-09-15',300,100)", (ss, f"D{i}", L[i % 3]))
-    con.execute("INSERT INTO shipment (source_system_id, source_ref, kind, pickup_location_id, delivery_location_id, requested_date, service_s, weight_kg) VALUES (%s,'PD1','PICKUP_DELIVERY',%s,%s,'2026-09-15',300,500)", (ss, L[0], L[3]))
+        con.execute("INSERT INTO shipment (source_system_id, source_ref, delivery_location_id, requested_date, service_s, weight_lb) VALUES (%s,%s,%s,'2026-09-15',300,100)", (ss, f"D{i}", L[i % 3]))
+    con.execute("INSERT INTO shipment (source_system_id, source_ref, kind, pickup_location_id, delivery_location_id, requested_date, service_s, weight_lb) VALUES (%s,'PD1','PICKUP_DELIVERY',%s,%s,'2026-09-15',300,500)", (ss, L[0], L[3]))
     con.execute("INSERT INTO scenario_shipment (scenario_id, shipment_id) SELECT (SELECT scenario_id FROM scenario), shipment_id FROM shipment")
     con.commit()
     fill_distance_cache(con, Grid(), [con.execute("SELECT location_id FROM location WHERE location_code='HUB-LPHB-30260'").fetchone()[0]] + list(L.values()))
@@ -83,8 +83,8 @@ def test_pickup_delivery_pair(pg):
 
 def test_pickup_returns_to_depot_and_pair_drop(pg):
     con, ss, L = _db(pg, cap_kg=400, n_vehicles=1)
-    con.execute("INSERT INTO shipment (source_system_id, source_ref, kind, delivery_location_id, requested_date, service_s, weight_kg) VALUES (%s,'PK1','PICKUP',%s,'2026-09-15',300,150)", (ss, L[1]))
-    con.execute("INSERT INTO shipment (source_system_id, source_ref, kind, pickup_location_id, delivery_location_id, requested_date, service_s, weight_kg, optional_flag, drop_penalty) VALUES (%s,'PD9','PICKUP_DELIVERY',%s,%s,'2026-09-15',300,900,true,5)", (ss, L[0], L[3]))
+    con.execute("INSERT INTO shipment (source_system_id, source_ref, kind, delivery_location_id, requested_date, service_s, weight_lb) VALUES (%s,'PK1','PICKUP',%s,'2026-09-15',300,150)", (ss, L[1]))
+    con.execute("INSERT INTO shipment (source_system_id, source_ref, kind, pickup_location_id, delivery_location_id, requested_date, service_s, weight_lb, optional_flag, drop_penalty) VALUES (%s,'PD9','PICKUP_DELIVERY',%s,%s,'2026-09-15',300,900,true,5)", (ss, L[0], L[3]))
     con.execute("UPDATE scenario_constraint SET enabled_flag=true WHERE constraint_code='OPTIONAL_DROP'")
     con.execute("INSERT INTO scenario_shipment (scenario_id, shipment_id) SELECT (SELECT scenario_id FROM scenario), shipment_id FROM shipment")
     con.commit()

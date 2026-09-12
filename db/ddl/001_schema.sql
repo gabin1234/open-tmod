@@ -1,4 +1,4 @@
--- Open T-Modeler product schema v1 (P01). Idempotent. Units: meters, seconds, kg, m3, timestamptz.
+-- Open T-Modeler product schema (P01, v2.0 imperial). Idempotent. Units: miles, seconds, lb, cuft, USD, timestamptz.
 -- Domains: master | source | constraint | scenario | routing | result
 CREATE SCHEMA IF NOT EXISTS tmod;
 SET search_path TO tmod, public;
@@ -53,13 +53,13 @@ CREATE TABLE IF NOT EXISTS vehicle_type (
   vehicle_type_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   type_code       text NOT NULL UNIQUE,
   name            text NOT NULL,
-  capacity_kg     numeric(12,2),
-  capacity_m3     numeric(12,3),
+  capacity_lb     numeric(12,2),
+  capacity_cuft     numeric(12,3),
   max_stops       integer,
   max_route_s     integer,           -- max route duration
-  max_distance_m  integer,
+  max_distance_mi numeric(10,2),
   fixed_cost      numeric(12,2) NOT NULL DEFAULT 0,
-  cost_per_km     numeric(10,4) NOT NULL DEFAULT 0,
+  cost_per_mi     numeric(10,4) NOT NULL DEFAULT 0,   -- USD per mile
   cost_per_hour   numeric(10,4) NOT NULL DEFAULT 0,
   osrm_profile    text NOT NULL DEFAULT 'car',   -- routing profile (car/truck)
   active_flag     boolean NOT NULL DEFAULT true,
@@ -116,8 +116,8 @@ CREATE TABLE IF NOT EXISTS product (
   product_code    text NOT NULL UNIQUE,
   name            text,
   category        text,
-  unit_weight_kg  numeric(10,3),
-  unit_volume_m3  numeric(10,4),
+  unit_weight_lb  numeric(10,3),
+  unit_volume_cuft  numeric(10,4),
   install_s       integer NOT NULL DEFAULT 0,   -- per-unit service time
   active_flag     boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(), created_by text NOT NULL DEFAULT current_user,
@@ -181,8 +181,8 @@ CREATE TABLE IF NOT EXISTS shipment (
   window_start    timestamptz,
   window_end      timestamptz,
   service_s       integer,                     -- explicit; null = derive via service_time_rule
-  weight_kg       numeric(12,3) NOT NULL DEFAULT 0,
-  volume_m3       numeric(12,4) NOT NULL DEFAULT 0,
+  weight_lb       numeric(12,3) NOT NULL DEFAULT 0,
+  volume_cuft       numeric(12,4) NOT NULL DEFAULT 0,
   pieces          integer NOT NULL DEFAULT 1,
   priority        smallint,
   optional_flag   boolean NOT NULL DEFAULT false,
@@ -205,8 +205,8 @@ CREATE TABLE IF NOT EXISTS shipment_item (
   product_id      bigint REFERENCES product(product_id),
   product_code_raw text,
   quantity        numeric(12,3) NOT NULL DEFAULT 1,
-  weight_kg       numeric(12,3),
-  volume_m3       numeric(12,4),
+  weight_lb       numeric(12,3),
+  volume_cuft       numeric(12,4),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -284,7 +284,7 @@ CREATE TABLE IF NOT EXISTS scenario_vehicle (
   vehicle_id      bigint NOT NULL REFERENCES vehicle(vehicle_id),
   override_shift_start time,
   override_shift_end   time,
-  override_capacity_kg numeric(12,2),
+  override_capacity_lb numeric(12,2),
   PRIMARY KEY (scenario_id, vehicle_id)
 );
 
@@ -312,7 +312,7 @@ CREATE TABLE IF NOT EXISTS road_segment (
   osrm_edge_ref   text,                        -- provider-internal edge/node pair
   from_node       bigint,
   to_node         bigint,
-  length_m        numeric(12,1),
+  length_mi       numeric(10,4),
   geometry        jsonb,                       -- [[lat,lon],...] polyline for the map
   created_at timestamptz NOT NULL DEFAULT now(), created_by text NOT NULL DEFAULT current_user
 );
@@ -347,7 +347,7 @@ CREATE TABLE IF NOT EXISTS distance_cache (
   to_location_id   bigint NOT NULL REFERENCES location(location_id),
   provider        distance_provider NOT NULL,
   profile         text NOT NULL DEFAULT 'car',
-  distance_m      integer NOT NULL,
+  distance_mi     numeric(10,3) NOT NULL,
   duration_s      integer NOT NULL,
   segment_ids     bigint[],                    -- traversed road_segment ids when known (for adjustments)
   geometry        jsonb,
@@ -364,7 +364,7 @@ CREATE TABLE IF NOT EXISTS optimization_run (
   solver_status   solver_status NOT NULL DEFAULT 'QUEUED',
   objective_value numeric(16,4),
   vehicle_count   integer,
-  total_distance_m  bigint,
+  total_distance_mi numeric(12,2),
   total_drive_s     bigint,
   total_service_s   bigint,
   total_route_s     bigint,
@@ -387,9 +387,9 @@ CREATE TABLE IF NOT EXISTS optimization_route (
   departure_time  timestamptz,
   wait_s          integer NOT NULL DEFAULT 0,
   service_s       integer NOT NULL DEFAULT 0,
-  distance_from_previous_m integer NOT NULL DEFAULT 0,
+  distance_from_previous_mi numeric(10,3) NOT NULL DEFAULT 0,
   travel_time_from_previous_s integer NOT NULL DEFAULT 0,
-  load_after_kg   numeric(12,3),
+  load_after_lb   numeric(12,3),
   late_s          integer NOT NULL DEFAULT 0,  -- arrival beyond window_end
   UNIQUE (optimization_run_id, vehicle_id, route_sequence)
 );

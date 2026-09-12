@@ -14,8 +14,8 @@ INSERT INTO depot (depot_code, name, location_id, open_time, close_time)
 SELECT 'LPHB-30260', 'Atlanta LMD Hub', location_id, '08:00', '18:00' FROM location WHERE location_code='HUB-LPHB-30260'
 ON CONFLICT (depot_code) DO NOTHING;
 
-INSERT INTO vehicle_type (type_code, name, capacity_kg, capacity_m3, max_stops, max_route_s, fixed_cost, cost_per_km, cost_per_hour, osrm_profile) VALUES
-  ('BOX26', '26ft box truck, 2-man crew', 4500, 45, 12, 36000, 250.00, 1.20, 45.00, 'truck')
+INSERT INTO vehicle_type (type_code, name, capacity_lb, capacity_cuft, max_stops, max_route_s, fixed_cost, cost_per_mi, cost_per_hour, osrm_profile) VALUES
+  ('BOX26', '26ft box truck, 2-man crew', 10000, 1600, 12, 36000, 250.00, 1.95, 45.00, 'truck')
 ON CONFLICT (type_code) DO NOTHING;
 
 INSERT INTO vehicle (vehicle_code, name, vehicle_type_id, depot_id, crew_size, work_limit_s, duty_limit_s)
@@ -33,13 +33,13 @@ INSERT INTO service_time_rule (rule_code, description, customer_type, product_ca
 ON CONFLICT (rule_code) DO NOTHING;
 
 INSERT INTO constraint_def (constraint_code, name, ctype, phase, param_schema, default_params, description) VALUES
-  ('CAPACITY_WEIGHT', 'Vehicle weight capacity', 'HARD', 1, '{}', '{}', 'sum(shipment.weight_kg) <= vehicle_type.capacity_kg'),
-  ('CAPACITY_VOLUME', 'Vehicle volume capacity', 'HARD', 1, '{}', '{}', 'sum(volume_m3) <= capacity_m3'),
+  ('CAPACITY_WEIGHT', 'Vehicle weight capacity', 'HARD', 1, '{}', '{}', 'sum(shipment.weight_lb) <= vehicle_type.capacity_lb (lb)'),
+  ('CAPACITY_VOLUME', 'Vehicle volume capacity', 'HARD', 1, '{}', '{}', 'sum(volume_cuft) <= capacity_cuft (cuft)'),
   ('SERVICE_TIME',    'Service time at stops', 'HARD', 1, '{}', '{}', 'stop_base + per-unit from service_time_rule'),
   ('TIME_WINDOW',     'Delivery time window', 'HARD', 1, '{"max_wait_s":"integer"}', '{"max_wait_s": 7200}', 'arrival within [window_start, window_end], waiting allowed'),
   ('WORK_LIMIT',      'Daily service-time budget', 'HARD', 1, '{}', '{}', 'sum(service_s) <= vehicle.work_limit_s'),
   ('DUTY_LIMIT',      'Daily on-duty budget (max route duration)', 'HARD', 2, '{}', '{}', 'drive+service+wait <= vehicle.duty_limit_s / type.max_route_s'),
-  ('MAX_DISTANCE',    'Max route distance', 'HARD', 2, '{}', '{}', 'sum(distance_m) <= vehicle_type.max_distance_m'),
+  ('MAX_DISTANCE',    'Max route distance', 'HARD', 2, '{}', '{}', 'sum(distance_mi) <= vehicle_type.max_distance_mi'),
   ('VEHICLE_COMPAT',  'Vehicle/customer/product compatibility', 'HARD', 2, '{}', '{}', 'vehicle_restriction rows'),
   ('OPTIONAL_DROP',   'Optional shipments may be dropped', 'SOFT', 2, '{"default_penalty":"number"}', '{"default_penalty": 500}', 'shipment.optional_flag with drop_penalty'),
   ('SOFT_TIME_WINDOW','Soft window with lateness penalty', 'SOFT', 3, '{"penalty_per_min":"number"}', '{"penalty_per_min": 2.0}', 'lateness allowed, penalised in objective'),
@@ -54,8 +54,8 @@ INSERT INTO objective_def (objective_code, name, unit, phase) VALUES
   ('LATENESS', 'Total lateness', 's', 3)
 ON CONFLICT (objective_code) DO NOTHING;
 
-INSERT INTO road_segment (segment_code, road_name, osm_way_id, length_m, geometry) VALUES
-  ('SEG-000001', 'Silver Avenue', 123456789, 1420.0, '[[33.60,-84.34],[33.61,-84.33]]')
+INSERT INTO road_segment (segment_code, road_name, osm_way_id, length_mi, geometry) VALUES
+  ('SEG-000001', 'Silver Avenue', 123456789, 0.88, '[[33.60,-84.34],[33.61,-84.33]]')
 ON CONFLICT (segment_code) DO NOTHING;
 
 INSERT INTO road_adjustment (segment_id, day_of_week, time_from, time_to, factor, reason)
@@ -94,8 +94,8 @@ SELECT ss.source_system_id, m.st, m.sc, m.tt, m.tc, m.rule, m.ord FROM source_sy
   ('TMS_IF.LMD_SHIPMENT','APPT_WINDOW','shipment','window_start','window_start_of:APPT_DT',4),
   ('TMS_IF.LMD_SHIPMENT','APPT_WINDOW','shipment','window_end','window_end_of:APPT_DT',5),
   ('TMS_IF.LMD_SHIPMENT','CHARGE_MIN','shipment','service_s','min_to_s',6),
-  ('TMS_IF.LMD_SHIPMENT','TOT_WGT','shipment','weight_kg','lb_to_kg',7),
-  ('TMS_IF.LMD_SHIPMENT','TOT_CUFT','shipment','volume_m3','cuft_to_m3',8),
+  ('TMS_IF.LMD_SHIPMENT','TOT_WGT','shipment','weight_lb','float',7),
+  ('TMS_IF.LMD_SHIPMENT','TOT_CUFT','shipment','volume_cuft','float',8),
   ('TMS_IF.LMD_SHIPMENT','ITEM_CNT','shipment','pieces','int',9),
   ('TMS_IF.LMD_SHIPMENT','LOAD_ID','shipment','source_load_ref',NULL,10),
   ('TMS_IF.LMD_SHIPMENT','APPT_TRUCK_ID','shipment','source_vehicle_ref',NULL,11),

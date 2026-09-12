@@ -65,7 +65,7 @@ def test_profile_factor_by_departure(pg):
 def test_dynamic_traffic_iterates_and_retimes_legs(pg):
     con, ss, hub, locs = _db(pg)
     for i, l in enumerate(locs):
-        con.execute("INSERT INTO shipment (source_system_id, source_ref, delivery_location_id, requested_date, service_s, weight_kg) VALUES (%s,%s,%s,'2026-09-14',1800,10)", (ss, f"S{i}", l))
+        con.execute("INSERT INTO shipment (source_system_id, source_ref, delivery_location_id, requested_date, service_s, weight_lb) VALUES (%s,%s,%s,'2026-09-14',1800,10)", (ss, f"S{i}", l))
     con.execute("INSERT INTO scenario_shipment (scenario_id, shipment_id) SELECT (SELECT scenario_id FROM scenario), shipment_id FROM shipment")
     con.execute("INSERT INTO scenario_constraint (scenario_id, constraint_code, enabled_flag, params) SELECT scenario_id, 'DYNAMIC_TRAFFIC', true, '{\"iterations\": 3}' FROM scenario")
     con.commit()
@@ -86,9 +86,9 @@ def test_dynamic_traffic_iterates_and_retimes_legs(pg):
 
 def test_priority_keeps_high_priority_optional(pg):
     con, ss, hub, locs = _db(pg)
-    con.execute("UPDATE vehicle_type SET capacity_kg=100")
-    con.execute("INSERT INTO shipment (source_system_id, source_ref, delivery_location_id, requested_date, service_s, weight_kg, optional_flag, drop_penalty, priority) VALUES (%s,'LOW',%s,'2026-09-14',60,100,true,1000,5)", (ss, locs[0]))
-    con.execute("INSERT INTO shipment (source_system_id, source_ref, delivery_location_id, requested_date, service_s, weight_kg, optional_flag, drop_penalty, priority) VALUES (%s,'HIGH',%s,'2026-09-14',60,100,true,1000,1)", (ss, locs[2]))
+    con.execute("UPDATE vehicle_type SET capacity_lb=100")
+    con.execute("INSERT INTO shipment (source_system_id, source_ref, delivery_location_id, requested_date, service_s, weight_lb, optional_flag, drop_penalty, priority) VALUES (%s,'LOW',%s,'2026-09-14',60,100,true,1000,5)", (ss, locs[0]))
+    con.execute("INSERT INTO shipment (source_system_id, source_ref, delivery_location_id, requested_date, service_s, weight_lb, optional_flag, drop_penalty, priority) VALUES (%s,'HIGH',%s,'2026-09-14',60,100,true,1000,1)", (ss, locs[2]))
     con.execute("INSERT INTO scenario_shipment (scenario_id, shipment_id) SELECT (SELECT scenario_id FROM scenario), shipment_id FROM shipment")
     con.execute("UPDATE scenario_constraint SET enabled_flag=true WHERE constraint_code='OPTIONAL_DROP'")
     con.commit()

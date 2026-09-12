@@ -9,6 +9,7 @@ import psycopg
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 DDL = ROOT / "db" / "ddl" / "001_schema.sql"
+MIGRATIONS = sorted((ROOT / "db" / "ddl").glob("0[0-9][2-9]_*.sql"))   # idempotent follow-ups (e.g. 002_imperial)
 SEED = ROOT / "db" / "seed" / "002_sample.sql"
 DEFAULT_DSN = "postgresql://tmod:tmod@localhost:5434/tmod"
 
@@ -30,6 +31,8 @@ def init(d: str | None = None, seed: bool = False, drop: bool = False) -> dict:
             con.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND state='idle in transaction'")
             con.execute("DROP SCHEMA IF EXISTS tmod CASCADE")
         con.execute(DDL.read_text())
+        for mig in MIGRATIONS:
+            con.execute(mig.read_text())
         if seed:
             con.execute(SEED.read_text())
         tables = con.execute("SELECT count(*) FROM information_schema.tables WHERE table_schema='tmod' AND table_type='BASE TABLE'").fetchone()[0]

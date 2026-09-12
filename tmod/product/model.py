@@ -18,17 +18,17 @@ PROFILE = {"OSRM": "driving", "VALHALLA": "truck", "MANUAL": "test", "HAVERSINE"
 class Vehicle:
     vehicle_id: int
     code: str
-    capacity_kg: float | None
-    capacity_m3: float | None
+    capacity_lb: float | None
+    capacity_cuft: float | None
     max_stops: int | None
     max_route_s: int | None
-    max_distance_m: int | None
+    max_distance_mi: float | None
     work_limit_s: int | None
     duty_limit_s: int | None
     shift_start_s: int
     shift_end_s: int
     fixed_cost: float
-    cost_per_km: float
+    cost_per_mi: float
     cost_per_hour: float
     vehicle_type_id: int
     depot_location_id: int | None = None
@@ -38,8 +38,8 @@ class Vehicle:
 class Stop:
     location_id: int
     shipment_ids: tuple[int, ...]
-    weight_kg: float
-    volume_m3: float
+    weight_lb: float
+    volume_cuft: float
     service_s: int
     window_start_s: int | None
     window_end_s: int | None
@@ -111,15 +111,15 @@ def load_scenario(con: psycopg.Connection, scenario_code: str) -> ScenarioData:
     dow = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")[plan_date.weekday()]
 
     vehicles = []
-    for r in con.execute("""SELECT v.vehicle_id, v.vehicle_code, COALESCE(sv.override_capacity_kg, t.capacity_kg), t.capacity_m3, t.max_stops, t.max_route_s, t.max_distance_m,
+    for r in con.execute("""SELECT v.vehicle_id, v.vehicle_code, COALESCE(sv.override_capacity_lb, t.capacity_lb), t.capacity_cuft, t.max_stops, t.max_route_s, t.max_distance_mi,
                                    v.work_limit_s, v.duty_limit_s, COALESCE(sv.override_shift_start, a.shift_start), COALESCE(sv.override_shift_end, a.shift_end),
-                                   t.fixed_cost, t.cost_per_km, t.cost_per_hour, t.vehicle_type_id, vd.location_id
+                                   t.fixed_cost, t.cost_per_mi, t.cost_per_hour, t.vehicle_type_id, vd.location_id
                             FROM scenario_vehicle sv JOIN vehicle v ON v.vehicle_id=sv.vehicle_id JOIN vehicle_type t ON t.vehicle_type_id=v.vehicle_type_id
                             JOIN depot vd ON vd.depot_id=v.depot_id
                             LEFT JOIN LATERAL (SELECT shift_start, shift_end FROM vehicle_availability a WHERE a.vehicle_id=v.vehicle_id AND a.active_flag
                                                AND (a.day_of_week IS NULL OR a.day_of_week=%s::day_of_week) ORDER BY a.day_of_week NULLS LAST LIMIT 1) a ON true
                             WHERE sv.scenario_id=%s AND v.active_flag ORDER BY v.vehicle_code""", (dow, sid)).fetchall():
-        vehicles.append(Vehicle(r[0], r[1], float(r[2]) if r[2] is not None else None, float(r[3]) if r[3] is not None else None, r[4], r[5], r[6], r[7], r[8],
+        vehicles.append(Vehicle(r[0], r[1], float(r[2]) if r[2] is not None else None, float(r[3]) if r[3] is not None else None, r[4], r[5], float(r[6]) if r[6] is not None else None, r[7], r[8],
                                 _secs(r[9], _secs(d_open, 8 * 3600)), _secs(r[10], _secs(d_close, 18 * 3600)), float(r[11]), float(r[12]), float(r[13]), r[14], r[15]))
 
     constraints = {c: (p or {}) for c, p in con.execute("SELECT constraint_code, params FROM scenario_constraint WHERE scenario_id=%s AND enabled_flag", (sid,)).fetchall()}
@@ -137,7 +137,7 @@ def load_scenario(con: psycopg.Connection, scenario_code: str) -> ScenarioData:
     unsupported: list[tuple[int, str]] = []
     midnight = datetime.combine(plan_date, time(0), tzinfo=tz)
     pnd: list[Stop] = []
-    for r in con.execute("""SELECT sh.shipment_id, sh.kind, sh.delivery_location_id, sh.customer_id, sh.weight_kg, sh.volume_m3, sh.pieces,
+    for r in con.execute("""SELECT sh.shipment_id, sh.kind, sh.delivery_location_id, sh.customer_id, sh.weight_lb, sh.volume_cuft, sh.pieces,
                                    COALESCE(ss.override_service_s, sh.service_s), COALESCE(ss.override_window_start, sh.window_start), COALESCE(ss.override_window_end, sh.window_end),
                                    sh.optional_flag, sh.drop_penalty, COALESCE(ss.override_priority, sh.priority, 5), l.latitude, sh.pickup_location_id, pl.latitude
                             FROM scenario_shipment ss JOIN shipment sh ON sh.shipment_id=ss.shipment_id JOIN location l ON l.location_id=sh.delivery_location_id
@@ -151,7 +151,7 @@ def load_scenario(con: psycopg.Connection, scenario_code: str) -> ScenarioData:
         we_s = int((we.astimezone(tz) - midnight).total_seconds()) if we else None
         if kind in ("PICKUP", "PICKUP_DELIVERY"):
             service = int(base_rule[0]) + (int(svc) if svc is not None else int(base_rule[1]) * int(pieces or 1))
-            common = dict(shipment_ids=(shid,), weight_kg=float(wkg or 0), volume_m3=float(vm3 or 0), service_s=service, optional=bool(opt),
+            common = dict(shipment_ids=(shid,), weight_lb=float(wkg or 0), volume_cuft=float(vm3 or 0), service_s=service, optional=bool(opt),
                           drop_penalty=float(pen) if pen else None, priority=int(prio), customer_ids=(cust,) if cust else ())
             if kind == "PICKUP":
                 pnd.append(Stop(location_id=loc, window_start_s=ws_s, window_end_s=we_s, kind="PICKUP", demand_sign=1, **common))
@@ -201,10 +201,10 @@ def load_scenario(con: psycopg.Connection, scenario_code: str) -> ScenarioData:
 
 def matrices(con: psycopg.Connection, data: ScenarioData, provider: RoadProvider | None = None,
              depart_by_pair: dict[tuple[int, int], int] | None = None, depart_default: int | None = None) -> tuple[list[list[int]], list[list[int]]]:
-    """(distance_m, duration_s) over data.locations from distance_cache; fills missing pairs via provider.
+    """(distance in 0.01 mi as int, duration_s) over data.locations from distance_cache; fills missing pairs via provider.
     Time-of-day factors (ROAD_ADJUSTMENT / DYNAMIC_TRAFFIC) use depart_by_pair[(i, j)] seconds when given, else the earliest shift start."""
     locs = data.locations
-    rows = con.execute("SELECT from_location_id, to_location_id, distance_m, duration_s FROM distance_cache WHERE provider=%s AND profile=%s AND from_location_id = ANY(%s) AND to_location_id = ANY(%s)",
+    rows = con.execute("SELECT from_location_id, to_location_id, distance_mi, duration_s FROM distance_cache WHERE provider=%s AND profile=%s AND from_location_id = ANY(%s) AND to_location_id = ANY(%s)",
                        (data.provider_code, data.profile, locs, locs)).fetchall()
     have = {(a, b): (d, t) for a, b, d, t in rows}
     missing = {(a, b) for a in locs for b in locs if a != b and (a, b) not in have}
@@ -212,7 +212,7 @@ def matrices(con: psycopg.Connection, data: ScenarioData, provider: RoadProvider
         if provider is None:
             raise ValueError(f"{len(missing)} location pairs missing in distance_cache for {data.provider_code}/{data.profile}; pass a provider to fill")
         fill_distance_cache(con, provider, locs)
-        rows = con.execute("SELECT from_location_id, to_location_id, distance_m, duration_s FROM distance_cache WHERE provider=%s AND profile=%s AND from_location_id = ANY(%s) AND to_location_id = ANY(%s)",
+        rows = con.execute("SELECT from_location_id, to_location_id, distance_mi, duration_s FROM distance_cache WHERE provider=%s AND profile=%s AND from_location_id = ANY(%s) AND to_location_id = ANY(%s)",
                            (data.provider_code, data.profile, locs, locs)).fetchall()
         have = {(a, b): (d, t) for a, b, d, t in rows}
     adjust = "ROAD_ADJUSTMENT" in data.constraints or "DYNAMIC_TRAFFIC" in data.constraints
@@ -231,5 +231,5 @@ def matrices(con: psycopg.Connection, data: ScenarioData, provider: RoadProvider
             if adjust:
                 dep = (depart_by_pair or {}).get((i, j), depart)
                 t = adjusted_duration(con, a, b, data.provider_code, data.profile, data.plan_date, dep, data.scenario_id, prof) or t
-            dist[i][j], dur[i][j] = int(d), int(t)
+            dist[i][j], dur[i][j] = int(round(float(d) * 100)), int(t)
     return dist, dur

@@ -231,13 +231,22 @@ def create_app(data_dir: Path = DATA_DIR, runs_dir: Path = RUNS_DIR, extractor=d
     if WEB_DIR.exists():
         app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
+        NO_CACHE = {"Cache-Control": "no-cache"}   # browsers otherwise keep stale index.html/app.js across deploys
+
         @app.get("/")
         def index():
-            return FileResponse(WEB_DIR / "index.html")
+            return FileResponse(WEB_DIR / "index.html", headers=NO_CACHE)
 
         @app.get("/product")
         def product_index():
-            return FileResponse(WEB_DIR / "product" / "index.html")
+            return FileResponse(WEB_DIR / "product" / "index.html", headers=NO_CACHE)
+
+        @app.middleware("http")
+        async def static_no_cache(request: Request, call_next):
+            resp = await call_next(request)
+            if request.url.path.startswith("/static/"):
+                resp.headers["Cache-Control"] = "no-cache"
+            return resp
 
     return app
 

@@ -38,7 +38,7 @@ pre{font-size:12px;background:var(--bg);padding:8px;border-radius:4px;overflow:a
   <div class="card"><h3>Create</h3>
    <div class="row"><label>code<input id="sc-code" placeholder="SC-2026-09-15-A"></label><label>plan date<input id="sc-date" type="date"></label></div>
    <label>name<input id="sc-name"></label>
-   <div class="row"><label>depot<select id="sc-depot"></select></label><label>provider<select id="sc-prov"><option>VALHALLA</option><option>OSRM</option></select></label><label>time limit s<input id="sc-tl" type="number" value="30"></label></div>
+   <div class="row"><label>depot<select id="sc-depot"></select></label><label>road routing<input value="Valhalla · truck" disabled></label><label>time limit s<input id="sc-tl" type="number" value="30"></label></div>
    <button class="btn primary" id="sc-create" style="margin-top:8px">Create scenario</button><div id="sc-create-msg" class="muted"></div></div>
  </div>
  <div id="sc-detail"><div class="muted">select a scenario</div></div>
@@ -54,11 +54,11 @@ pre{font-size:12px;background:var(--bg);padding:8px;border-radius:4px;overflow:a
 <section id="v-shipments" class="view">
  <div class="row" style="align-items:end;margin-bottom:8px;max-width:900px"><label>date<select id="sh-date"></select></label>
   <label>upload xlsx<input type="file" id="sh-file" accept=".xlsx"></label><button class="btn" id="sh-upload">Upload</button><button class="btn" id="sh-refresh">Refresh from Blue Yonder</button><span id="sh-msg" class="muted"></span></div>
- <div class="scroll"><table id="sh-list"><thead><tr><th>ref</th><th>order</th><th>kind</th><th>customer</th><th>address</th><th>zip</th><th class="num">kg</th><th class="num">m³</th><th class="num">svc min</th><th>window</th><th class="num">prio</th><th>opt</th></tr></thead><tbody></tbody></table></div>
+ <div class="scroll"><table id="sh-list"><thead><tr><th>ref</th><th>order</th><th>kind</th><th>customer</th><th>address</th><th>zip</th><th class="num">lb</th><th class="num">cuft</th><th class="num">svc min</th><th>window</th><th class="num">prio</th><th>opt</th></tr></thead><tbody></tbody></table></div>
 </section>
 
 <section id="v-vehicles" class="view"><div class="grid" style="grid-template-columns:1fr 1fr">
- <div class="card"><h3>Vehicle types</h3><table id="vt-list" class="editable"><thead><tr><th>type</th><th>name</th><th class="num">cap kg</th><th class="num">cap m³</th><th class="num">max stops</th><th class="num">max route s</th><th class="num">fixed $</th><th class="num">$/km</th><th class="num">$/h</th><th></th></tr></thead><tbody></tbody></table>
+ <div class="card"><h3>Vehicle types</h3><table id="vt-list" class="editable"><thead><tr><th>type</th><th>name</th><th class="num">cap lb</th><th class="num">cap cuft</th><th class="num">max stops</th><th class="num">max route s</th><th class="num">fixed $</th><th class="num">$/mi</th><th class="num">$/h</th><th></th></tr></thead><tbody></tbody></table>
   <button class="btn" id="vt-add" style="margin-top:6px">+ type</button></div>
  <div class="card"><h3>Vehicles</h3><table id="v-list" class="editable"><thead><tr><th>code</th><th>name</th><th>type</th><th>depot</th><th class="num">crew</th><th class="num">work s</th><th class="num">duty s</th><th></th></tr></thead><tbody></tbody></table>
   <button class="btn" id="v-add" style="margin-top:6px">+ vehicle</button><div id="v-msg" class="muted"></div></div>

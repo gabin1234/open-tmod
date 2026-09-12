@@ -15,6 +15,7 @@ from tmod.product.db import connect
 from tmod.routing import decode_polyline6
 
 DOW = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+M_PER_MI = 1609.344
 
 
 @dataclass(frozen=True)
@@ -22,14 +23,14 @@ class Edge:
     way_id: int | None
     edge_ref: str
     name: str
-    length_m: float
+    length_m: float          # provider-native meters (converted to miles at the DB boundary)
     duration_s: float
     geometry: tuple[tuple[float, float], ...] | None = None   # edge polyline slice, for map highlight / nearest-segment
 
 
 @dataclass(frozen=True)
 class RouteDetail:
-    distance_m: float
+    distance_m: float        # provider-native meters
     duration_s: float
     geometry: tuple[tuple[float, float], ...]
     edges: tuple[Edge, ...]
@@ -143,9 +144,9 @@ def fill_distance_cache(con: psycopg.Connection, provider: RoadProvider, locatio
             block = list(dict.fromkeys(src + tgt))
             dist, dur = provider.matrix([pts[k] for k in block])
             idx = {k: n_ for n_, k in enumerate(block)}
-            rows = [(a, b, provider.code, provider.profile, int(round(dist[idx[a]][idx[b]])), int(round(dur[idx[a]][idx[b]])))
+            rows = [(a, b, provider.code, provider.profile, round(dist[idx[a]][idx[b]] / M_PER_MI, 3), int(round(dur[idx[a]][idx[b]])))
                     for a in src for b in tgt if a != b and (a, b) not in have]
-            con.cursor().executemany("INSERT INTO distance_cache (from_location_id, to_location_id, provider, profile, distance_m, duration_s) VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING", rows)
+            con.cursor().executemany("INSERT INTO distance_cache (from_location_id, to_location_id, provider, profile, distance_mi, duration_s) VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING", rows)
             have.update((a, b) for a, b, *_ in rows)
             n += len(rows)
     con.commit()
@@ -161,8 +162,8 @@ def _segment_id(con, e: Edge) -> int:
         if e.geometry:
             con.execute("UPDATE road_segment SET geometry=%s WHERE segment_id=%s AND geometry IS NULL", (json.dumps([list(p) for p in e.geometry]), row[0]))
         return row[0]
-    sid = con.execute("INSERT INTO road_segment (segment_code, road_name, osm_way_id, osrm_edge_ref, length_m, geometry) VALUES ('tmp', %s, %s, %s, %s, %s) RETURNING segment_id",
-                      (e.name or "(unnamed)", e.way_id, e.edge_ref, round(e.length_m, 1), json.dumps([list(p) for p in e.geometry]) if e.geometry else None)).fetchone()[0]
+    sid = con.execute("INSERT INTO road_segment (segment_code, road_name, osm_way_id, osrm_edge_ref, length_mi, geometry) VALUES ('tmp', %s, %s, %s, %s, %s) RETURNING segment_id",
+                      (e.name or "(unnamed)", e.way_id, e.edge_ref, round(e.length_m / M_PER_MI, 4), json.dumps([list(p) for p in e.geometry]) if e.geometry else None)).fetchone()[0]
     con.execute("UPDATE road_segment SET segment_code = 'SEG-' || lpad(%s::text, 6, '0') WHERE segment_id=%s", (sid, sid))
     return sid
 
@@ -176,11 +177,11 @@ def route_detail(con: psycopg.Connection, provider: RoadProvider, from_id: int, 
         return None
     seg_ids = [_segment_id(con, e) for e in rd.edges]
     seg_dur = [int(round(e.duration_s)) for e in rd.edges]
-    con.execute("""INSERT INTO distance_cache (from_location_id, to_location_id, provider, profile, distance_m, duration_s, segment_ids, segment_durations_s, geometry)
+    con.execute("""INSERT INTO distance_cache (from_location_id, to_location_id, provider, profile, distance_mi, duration_s, segment_ids, segment_durations_s, geometry)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                   ON CONFLICT (from_location_id, to_location_id, provider, profile) DO UPDATE SET distance_m=EXCLUDED.distance_m, duration_s=EXCLUDED.duration_s,
+                   ON CONFLICT (from_location_id, to_location_id, provider, profile) DO UPDATE SET distance_mi=EXCLUDED.distance_mi, duration_s=EXCLUDED.duration_s,
                    segment_ids=EXCLUDED.segment_ids, segment_durations_s=EXCLUDED.segment_durations_s, geometry=EXCLUDED.geometry, computed_at=now()""",
-                (from_id, to_id, provider.code, provider.profile, int(round(rd.distance_m)), int(round(rd.duration_s)), seg_ids, seg_dur,
+                (from_id, to_id, provider.code, provider.profile, round(rd.distance_m / M_PER_MI, 3), int(round(rd.duration_s)), seg_ids, seg_dur,
                  json.dumps([list(p) for p in rd.geometry])))
     con.commit()
     return rd

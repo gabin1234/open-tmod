@@ -26,16 +26,18 @@ class SolveResult:
     vehicles: int
     stops: int
     unassigned: int
-    total_distance_m: int
+    total_distance_mi: float
     total_route_s: int
     total_cost: float
 
 
-def _arc_cost(data: ScenarioData, v, dist_m: int, dur_s: int) -> int:
+def _arc_cost(data: ScenarioData, v, dist_cmi: int, dur_s: int) -> int:
+    """dist_cmi = distance in hundredths of a mile."""
     w = data.weights
-    cost = w.get("COST", 0) * (v.cost_per_km * dist_m / 1000 + v.cost_per_hour * dur_s / 3600)
+    mi = dist_cmi / 100
+    cost = w.get("COST", 0) * (v.cost_per_mi * mi + v.cost_per_hour * dur_s / 3600)
     cost += w.get("TRAVEL_TIME", 0) * dur_s / 60           # minutes
-    cost += w.get("DISTANCE", 0) * dist_m / 1000            # km
+    cost += w.get("DISTANCE", 0) * mi                       # miles
     return int(round(cost * SCALE))
 
 
@@ -97,11 +99,11 @@ def build_and_solve(data: ScenarioData, dist: list[list[int]], dur: list[list[in
     if "MAX_DISTANCE" in C:
         ddim = rt.GetDimensionOrDie("distance")
         for vi, v in enumerate(data.vehicles):
-            if v.max_distance_m:
-                ddim.SetSpanUpperBoundForVehicle(v.max_distance_m, vi)
+            if v.max_distance_mi:
+                ddim.SetSpanUpperBoundForVehicle(int(round(v.max_distance_mi * 100)), vi)
 
     # capacities (signed: pickups load, P&D deliveries unload)
-    for code, attr, cap_attr, scale in (("CAPACITY_WEIGHT", "weight_kg", "capacity_kg", 1000), ("CAPACITY_VOLUME", "volume_m3", "capacity_m3", 1000)):
+    for code, attr, cap_attr, scale in (("CAPACITY_WEIGHT", "weight_lb", "capacity_lb", 1000), ("CAPACITY_VOLUME", "volume_cuft", "capacity_cuft", 1000)):
         if code in C:
             demand = [0] * D + [int(round(getattr(s, attr) * scale)) * s.demand_sign for s in stops]
             caps = [int(round(getattr(v, cap_attr) * scale)) if getattr(v, cap_attr) else BIG for v in data.vehicles]
@@ -206,7 +208,7 @@ def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProv
             con.execute("UPDATE optimization_run SET solver_status='INFEASIBLE', end_time=now() WHERE optimization_run_id=%s", (run_id,))
             con.execute("UPDATE scenario SET status='READY' WHERE scenario_id=%s", (data.scenario_id,))
             con.commit()
-            return SolveResult(run_id, "INFEASIBLE", 0, len(data.stops), len(data.stops), 0, 0, 0.0)
+            return SolveResult(run_id, "INFEASIBLE", 0, len(data.stops), len(data.stops), 0.0, 0, 0.0)
         midnight = datetime.combine(data.plan_date, time(0), tzinfo=data.tz)
         routed: set[int] = set()
         tot_dist = tot_drive = tot_service = tot_route = 0
@@ -238,11 +240,11 @@ def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProv
                 late = max(0, arr - s.window_end_s) if s.window_end_s is not None else 0
                 per = max(1, len(s.shipment_ids))
                 kind = {"PICKUP": "PICKUP", "PICKUP_DELIVERY_P": "PICKUP"}.get(s.kind, "DELIVERY")
-                load += s.weight_kg * s.demand_sign if s.kind != "DELIVERY" else 0.0
+                load += s.weight_lb * s.demand_sign if s.kind != "DELIVERY" else 0.0
                 for k, shid in enumerate(s.shipment_ids):
                     seq += 1
                     rows.append((run_id, v.vehicle_id, seq, s.location_id, shid, midnight + timedelta(seconds=arr), midnight + timedelta(seconds=arr + s.service_s),
-                                 0, s.service_s // per if k else s.service_s - s.service_s // per * (per - 1), d_prev if k == 0 else 0, t_prev if k == 0 else 0, late, kind, round(load, 3)))
+                                 0, s.service_s // per if k else s.service_s - s.service_s // per * (per - 1), d_prev / 100 if k == 0 else 0, t_prev if k == 0 else 0, late, kind, round(load, 3)))
                     if s.kind != "PICKUP_DELIVERY_P":
                         routed.add(shid)
                 v_dist += d_prev
@@ -255,28 +257,28 @@ def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProv
             v_dist += d_prev
             v_drive += t_prev
             seq += 1
-            rows.append((run_id, v.vehicle_id, seq, depot_loc, None, midnight + timedelta(seconds=end_s), midnight + timedelta(seconds=end_s), 0, 0, d_prev, t_prev, 0, "DEPOT", round(load, 3)))
+            rows.append((run_id, v.vehicle_id, seq, depot_loc, None, midnight + timedelta(seconds=end_s), midnight + timedelta(seconds=end_s), 0, 0, d_prev / 100, t_prev, 0, "DEPOT", round(load, 3)))
             route_s = end_s - start_s
             tot_dist += v_dist
             tot_drive += v_drive
             tot_service += v_service
             tot_route += route_s
-            tot_cost += v.fixed_cost + v.cost_per_km * v_dist / 1000 + v.cost_per_hour * route_s / 3600
+            tot_cost += v.fixed_cost + v.cost_per_mi * v_dist / 100 + v.cost_per_hour * route_s / 3600
         con.cursor().executemany("""INSERT INTO optimization_route (optimization_run_id, vehicle_id, route_sequence, stop_location_id, shipment_id, arrival_time, departure_time,
-                                    wait_s, service_s, distance_from_previous_m, travel_time_from_previous_s, late_s, stop_kind, load_after_kg) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", rows)
+                                    wait_s, service_s, distance_from_previous_mi, travel_time_from_previous_s, late_s, stop_kind, load_after_lb) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", rows)
         un = [(run_id, shid, "DROPPED_OPTIONAL" if s.optional else "INFEASIBLE_DROPPED", s.drop_penalty)
               for s in data.stops if s.kind != "PICKUP_DELIVERY_P" for shid in s.shipment_ids if shid not in routed]
         un += [(run_id, shid, reason, None) for shid, reason in data.unsupported]
         if un:
             con.cursor().executemany("INSERT INTO optimization_unassigned (optimization_run_id, shipment_id, reason, penalty_applied) VALUES (%s,%s,%s,%s)", un)
         status = "OPTIMAL" if rt.status() == 1 else "FEASIBLE"
-        con.execute("""UPDATE optimization_run SET end_time=now(), solver_status=%s, objective_value=%s, vehicle_count=%s, total_distance_m=%s, total_drive_s=%s,
+        con.execute("""UPDATE optimization_run SET end_time=now(), solver_status=%s, objective_value=%s, vehicle_count=%s, total_distance_mi=%s, total_drive_s=%s,
                        total_service_s=%s, total_route_s=%s, total_cost=%s, engine_params = engine_params || %s::jsonb WHERE optimization_run_id=%s""",
-                    (status, sol.ObjectiveValue() / SCALE, used, tot_dist, tot_drive, tot_service, tot_route, round(tot_cost, 2),
+                    (status, sol.ObjectiveValue() / SCALE, used, round(tot_dist / 100, 2), tot_drive, tot_service, tot_route, round(tot_cost, 2),
                      psycopg.types.json.Json({"iterations_used": iterations_used}), run_id))
         con.execute("UPDATE scenario SET status='DONE' WHERE scenario_id=%s", (data.scenario_id,))
         con.commit()
-        return SolveResult(run_id, status, used, len(data.stops), len(un), tot_dist, tot_route, round(tot_cost, 2))
+        return SolveResult(run_id, status, used, len(data.stops), len(un), round(tot_dist / 100, 2), tot_route, round(tot_cost, 2))
     except Exception as e:
         con.rollback()
         con.execute("UPDATE optimization_run SET solver_status='ERROR', end_time=now(), error_message=%s WHERE optimization_run_id=%s", (f"{type(e).__name__}: {e}"[:1000], run_id))

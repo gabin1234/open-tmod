@@ -38,15 +38,15 @@ def test_etl_lmd_rows(pg):
         rep = run_etl(con, "BLUE_YONDER", LMD_ROWS)
         assert rep.rows == 3 and rep.shipments == 2 and rep.locations == 1 and rep.customers == 1 and rep.geocoded == 1
         assert rep.skipped == {"no_requested_date": 1}
-        r = con.execute("SELECT weight_kg, service_s, window_start, window_end, pieces, source_load_ref FROM shipment WHERE source_ref='G1'").fetchone()
-        assert abs(r[0] - Decimal("45.359")) < Decimal("0.001") and r[1] == 2700 and r[2].hour == 8 and r[3].hour == 12 and r[4] == 2 and r[5] == "L1"
+        r = con.execute("SELECT weight_lb, service_s, window_start, window_end, pieces, source_load_ref FROM shipment WHERE source_ref='G1'").fetchone()
+        assert r[0] == Decimal("100") and r[1] == 2700 and r[2].hour == 8 and r[3].hour == 12 and r[4] == 2 and r[5] == "L1"
         loc = con.execute("SELECT location_code, postal_code, latitude, geocode_source FROM location WHERE location_code='BY-AD1'").fetchone()
         assert loc[1] == "30309" and 33 < loc[2] < 34 and loc[3].startswith("ZCTA")
         # idempotent + update
         rows2 = [dict(LMD_ROWS[0], TOT_WGT="200"), LMD_ROWS[1], LMD_ROWS[2]]
         rep2 = run_etl(con, "BLUE_YONDER", rows2)
         assert rep2.shipments == 2 and con.execute("SELECT count(*) FROM shipment").fetchone()[0] == 2
-        assert abs(con.execute("SELECT weight_kg FROM shipment WHERE source_ref='G1'").fetchone()[0] - Decimal("90.718")) < Decimal("0.001")
+        assert con.execute("SELECT weight_lb FROM shipment WHERE source_ref='G1'").fetchone()[0] == Decimal("200")
 
 
 def test_etl_xlsx(pg, tmp_path):

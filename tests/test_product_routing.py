@@ -54,13 +54,14 @@ def test_fill_cache_and_route_detail(pg):
     m = Mock()
     assert fill_distance_cache(con, m, ids) == 6 and m.calls == 1
     assert fill_distance_cache(con, m, ids) == 0
-    assert con.execute("SELECT distance_m, duration_s FROM distance_cache WHERE from_location_id=%s AND to_location_id=%s", (ids[0], ids[2])).fetchone() == (2000, 120)
+    d, t = con.execute("SELECT distance_mi, duration_s FROM distance_cache WHERE from_location_id=%s AND to_location_id=%s", (ids[0], ids[2])).fetchone()
+    assert abs(float(d) - 2000 / 1609.344) < 0.001 and t == 120
     rd = route_detail(con, m, ids[0], ids[1])
     assert rd.distance_m == 1500 and con.execute("SELECT count(*) FROM road_segment WHERE osm_way_id IN (111,222)").fetchone()[0] == 2
     route_detail(con, m, ids[1], ids[2])
     assert con.execute("SELECT count(*) FROM road_segment WHERE osm_way_id IN (111,222)").fetchone()[0] == 2  # no dupes
-    row = con.execute("SELECT segment_ids, segment_durations_s, distance_m FROM distance_cache WHERE from_location_id=%s AND to_location_id=%s", (ids[0], ids[1])).fetchone()
-    assert len(row[0]) == 2 and row[1] == [120, 80] and row[2] == 1500
+    row = con.execute("SELECT segment_ids, segment_durations_s, distance_mi FROM distance_cache WHERE from_location_id=%s AND to_location_id=%s", (ids[0], ids[1])).fetchone()
+    assert len(row[0]) == 2 and row[1] == [120, 80] and abs(float(row[2]) - 1500 / 1609.344) < 0.001
     codes = con.execute("SELECT segment_code, road_name, geometry FROM road_segment WHERE osm_way_id=111").fetchone()
     assert codes[0].startswith("SEG-") and codes[1] == "Silver Avenue" and len(codes[2]) == 2
     con.close()
