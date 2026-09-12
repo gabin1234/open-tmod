@@ -1,6 +1,6 @@
 # P09 — Phase 3: Dynamic Traffic · Historical Travel Time · Priority
 
-상태: REVIEW (승인 대기)
+상태: FROZEN (2026-09-12 승인)
 버전: 1.0 (P01 v1.3 additive 테이블, P03 v1.1, P04 v1.3)
 
 ## 범위
