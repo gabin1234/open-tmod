@@ -1,0 +1,86 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Open T-Modeler</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--b:#d9ddd6;--bg:#f4f5f2;--ink:#1b2430;--muted:#66707a;--acc:#0f6e8c;--acc2:#b4552b}
+body{margin:0;font:14px/1.4 system-ui;color:var(--ink);background:#fff}
+header{display:flex;align-items:center;gap:18px;padding:8px 16px;border-bottom:1px solid var(--b);background:var(--bg)}
+header h1{font-size:15px;margin:0 12px 0 0}
+nav button{background:none;border:none;padding:6px 10px;font:inherit;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent}
+nav button.on{color:var(--ink);border-color:var(--acc);font-weight:600}
+#health{margin-left:auto;font-size:12px;color:var(--muted)}
+main{padding:12px 16px}.view{display:none}.view.on{display:block}
+.grid{display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:start}
+.card{border:1px solid var(--b);border-radius:6px;padding:10px 12px;background:#fff;margin-bottom:10px}
+.card h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+table{border-collapse:collapse;width:100%;font-size:12.5px}th,td{border-bottom:1px solid var(--b);padding:4px 6px;text-align:left;vertical-align:top;white-space:nowrap}th{font-weight:600;color:var(--muted)}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.sel{background:#e8f1f5}tbody tr{cursor:pointer}
+label{display:block;font-size:12px;color:var(--muted);margin-top:6px}
+input,select,textarea{width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid var(--b);border-radius:4px;font:inherit}
+input[type=checkbox]{width:auto}
+.row{display:flex;gap:8px}.row>*{flex:1}
+button.btn{padding:5px 10px;border:1px solid #888;border-radius:4px;background:#fff;cursor:pointer;font:inherit}
+button.primary{background:var(--acc);color:#fff;border-color:var(--acc)}button.danger{color:var(--acc2);border-color:var(--acc2)}
+.badge{display:inline-block;padding:0 6px;border-radius:8px;font-size:11px;color:#fff;background:#999}.badge.DONE,.badge.OPTIMAL{background:#2f7d4f}.badge.RUNNING,.badge.FEASIBLE{background:#d8891a}.badge.ERROR,.badge.INFEASIBLE{background:#c0392b}
+#map,#rmap{height:60vh;border:1px solid var(--b);border-radius:6px}
+.muted{color:var(--muted);font-size:12px}.err{color:#c0392b;font-size:12px}
+pre{font-size:12px;background:var(--bg);padding:8px;border-radius:4px;overflow:auto}
+.scroll{max-height:60vh;overflow:auto}
+.editable td[contenteditable]{background:#fffdf3}
+</style></head><body>
+<header><h1>Open T-Modeler</h1>
+<nav><button data-v="scenarios" class="on">Scenarios</button><button data-v="result">Map / Result</button><button data-v="shipments">Shipments</button><button data-v="vehicles">Vehicles</button><button data-v="road">Road Weight</button><button data-v="compare">Compare</button></nav>
+<span id="health">…</span></header>
+<main>
+<section id="v-scenarios" class="view on"><div class="grid">
+ <div>
+  <div class="card"><h3>Scenarios</h3><table id="sc-list"><thead><tr><th>code</th><th>date</th><th>status</th><th class="num">shpm</th><th class="num">runs</th></tr></thead><tbody></tbody></table></div>
+  <div class="card"><h3>Create</h3>
+   <div class="row"><label>code<input id="sc-code" placeholder="SC-2026-09-15-A"></label><label>plan date<input id="sc-date" type="date"></label></div>
+   <label>name<input id="sc-name"></label>
+   <div class="row"><label>depot<select id="sc-depot"></select></label><label>provider<select id="sc-prov"><option>VALHALLA</option><option>OSRM</option></select></label><label>time limit s<input id="sc-tl" type="number" value="30"></label></div>
+   <button class="btn primary" id="sc-create" style="margin-top:8px">Create scenario</button><div id="sc-create-msg" class="muted"></div></div>
+ </div>
+ <div id="sc-detail"><div class="muted">select a scenario</div></div>
+</div></section>
+
+<section id="v-result" class="view"><div class="grid" style="grid-template-columns:1fr 380px">
+ <div><div class="row" style="margin-bottom:8px;align-items:center"><label style="margin:0">run <select id="run-sel"></select></label><label style="margin:0"><input type="checkbox" id="run-detail" checked> road geometry</label><span id="run-meta" class="muted"></span></div><div id="map"></div></div>
+ <div><div class="card"><h3>Vehicles</h3><table id="run-vehicles"><thead><tr><th>vehicle</th><th class="num">stops</th><th class="num">mi</th><th>start→end</th></tr></thead><tbody></tbody></table></div>
+      <div class="card"><h3>Sequence</h3><div class="scroll"><table id="run-seq"><thead><tr><th>#</th><th>stop</th><th>arrive</th><th>depart</th><th class="num">svc</th><th class="num">mi</th><th class="num">late</th></tr></thead><tbody></tbody></table></div></div>
+      <div class="card"><h3>Unassigned</h3><div id="run-un" class="muted">–</div></div></div>
+</div></section>
+
+<section id="v-shipments" class="view">
+ <div class="row" style="align-items:end;margin-bottom:8px;max-width:900px"><label>date<select id="sh-date"></select></label>
+  <label>upload xlsx<input type="file" id="sh-file" accept=".xlsx"></label><button class="btn" id="sh-upload">Upload</button><button class="btn" id="sh-refresh">Refresh from Blue Yonder</button><span id="sh-msg" class="muted"></span></div>
+ <div class="scroll"><table id="sh-list"><thead><tr><th>ref</th><th>order</th><th>customer</th><th>address</th><th>zip</th><th class="num">kg</th><th class="num">m³</th><th class="num">svc min</th><th>window</th><th class="num">prio</th><th>opt</th></tr></thead><tbody></tbody></table></div>
+</section>
+
+<section id="v-vehicles" class="view"><div class="grid" style="grid-template-columns:1fr 1fr">
+ <div class="card"><h3>Vehicle types</h3><table id="vt-list" class="editable"><thead><tr><th>type</th><th>name</th><th class="num">cap kg</th><th class="num">cap m³</th><th class="num">max stops</th><th class="num">max route s</th><th class="num">fixed $</th><th class="num">$/km</th><th class="num">$/h</th><th></th></tr></thead><tbody></tbody></table>
+  <button class="btn" id="vt-add" style="margin-top:6px">+ type</button></div>
+ <div class="card"><h3>Vehicles</h3><table id="v-list" class="editable"><thead><tr><th>code</th><th>name</th><th>type</th><th>depot</th><th class="num">crew</th><th class="num">work s</th><th class="num">duty s</th><th></th></tr></thead><tbody></tbody></table>
+  <button class="btn" id="v-add" style="margin-top:6px">+ vehicle</button><div id="v-msg" class="muted"></div></div>
+</div></section>
+
+<section id="v-road" class="view"><div class="grid" style="grid-template-columns:1fr 380px">
+ <div><div class="muted" style="margin-bottom:6px">click the map near a road, or search by name</div><div id="rmap"></div></div>
+ <div><div class="card"><h3>Segment</h3><input id="seg-q" placeholder="search road name…"><div id="seg-list" class="scroll" style="max-height:20vh;margin-top:6px"></div>
+   <div id="seg-sel" class="muted" style="margin-top:6px">none selected</div></div>
+  <div class="card"><h3>Adjustment</h3>
+   <label>day of week<select id="adj-dow"><option value="">every day</option><option>MON</option><option>TUE</option><option>WED</option><option>THU</option><option>FRI</option><option>SAT</option><option>SUN</option></select></label>
+   <div class="row"><label>from<input id="adj-from" value="07:00"></label><label>to<input id="adj-to" value="09:00"></label><label>factor<input id="adj-f" type="number" step="0.05" value="1.50"></label></div>
+   <label>reason<input id="adj-reason" placeholder="Morning congestion"></label>
+   <button class="btn primary" id="adj-save" style="margin-top:8px">Save</button><span id="adj-msg" class="muted"></span></div>
+  <div class="card"><h3>All adjustments</h3><div class="scroll" style="max-height:30vh"><table id="adj-list"><thead><tr><th>road</th><th>day</th><th>time</th><th class="num">×</th><th>reason</th><th></th></tr></thead><tbody></tbody></table></div></div></div>
+</div></section>
+
+<section id="v-compare" class="view">
+ <div class="row" style="max-width:600px"><label>run A<select id="cmp-a"></select></label><label>run B<select id="cmp-b"></select></label><button class="btn" id="cmp-go" style="align-self:end">Compare</button></div>
+ <table id="cmp-table" style="max-width:700px;margin-top:10px"><thead><tr><th>metric</th><th class="num">A</th><th class="num">B</th><th class="num">delta</th></tr></thead><tbody></tbody></table>
+</section>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/product/app.js"></script>
+</body></html>

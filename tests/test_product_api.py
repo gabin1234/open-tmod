@@ -104,6 +104,15 @@ def test_segments_and_adjustments(client):
     assert client.delete(f"/api/v2/adjustments/{a.json()['adjustment_id']}").status_code == 204
 
 
+def test_product_page_and_detail(client):
+    assert client.get("/product").status_code == 200 and "product/app.js" in client.get("/product").text
+    assert client.get("/static/product/app.js").status_code == 200
+    client.post("/api/v2/scenarios", json={"code": "SC-D", "name": "d", "plan_date": "2026-09-20", "depot_code": "LPHB-30260", "provider": "MANUAL", "time_limit_s": 1})
+    rid = client.post("/api/v2/scenarios/SC-D/run?wait=1").json()["result"]["run_id"]
+    r = client.get(f"/api/v2/runs/{rid}?detail=1").json()   # MANUAL provider -> no geometry, no error
+    assert r["routes"] and all(l["geometry"] is None for v in r["routes"] for l in v["legs"])
+
+
 def test_no_db_returns_503(tmp_path, monkeypatch):
     monkeypatch.setenv("TMOD_PG_DSN", "postgresql://x:x@localhost:1/none")
     with TestClient(create_app(tmp_path, tmp_path / "runs")) as c:

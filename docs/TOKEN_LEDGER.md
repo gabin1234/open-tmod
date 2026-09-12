@@ -35,3 +35,4 @@
 | P03 | routing data (OSRM/Valhalla, cache, segments, adjustments) | ~20k | ~14k | ~1.01M | tmod/product/routing.py; OSRM Georgia on :5001 (5000 = macOS AirPlay) |
 | P04 | OR-Tools model builder + solve | ~30k | ~20k | ~1.06M | tmod/product/{model,solve}.py; real 65-shipment run OPTIMAL 20s |
 | P05 | product API /api/v2 | ~24k | ~16k | ~1.10M | tmod/product/api.py mounted in web app |
+| P06 | product frontend /product | ~26k | ~18k | ~1.15M | web/product/{index.html,app.js}; runs?detail=1 lazy geometry |

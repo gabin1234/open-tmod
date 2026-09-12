@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from tmod.product.db import SEED, dsn
 from tmod.product.etl import load_rows_xlsx, run_etl
 from tmod.product.model import populate_scenario
-from tmod.product.routing import OSRMProvider, ValhallaRoadProvider
+from tmod.product.routing import OSRMProvider, ValhallaRoadProvider, route_detail
 from tmod.product.solve import run_scenario
 
 MASTERS: dict[str, tuple[str, list[str]]] = {   # table -> (natural key, writable columns)
@@ -324,7 +324,7 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
             return {"adjustment_id": adjustment_id, "enabled": enabled}
 
     # ---------- results ----------
-    def _run(c, run_id: int) -> dict:
+    def _run(c, run_id: int, detail: bool = False) -> dict:
         run = c.execute("SELECT r.*, s.scenario_code, s.plan_date, s.distance_provider FROM optimization_run r JOIN scenario s USING (scenario_id) WHERE optimization_run_id=%s", (run_id,)).fetchone()
         if not run:
             raise HTTPException(404, "run not found")
@@ -339,23 +339,37 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
             v["stops"].append(x)
             v["distance_m"] += x["distance_from_previous_m"]
             v["shipments"] += x["shipment_id"] is not None
-        for v in routes.values():
-            legs = []
-            for a, b in zip(v["stops"], v["stops"][1:]):
-                if a["stop_location_id"] == b["stop_location_id"]:
-                    continue
-                g = c.execute("SELECT geometry FROM distance_cache WHERE from_location_id=%s AND to_location_id=%s AND provider=%s AND profile=%s AND geometry IS NOT NULL",
-                              (a["stop_location_id"], b["stop_location_id"], run["distance_provider"], prof)).fetchone()
-                legs.append({"from": a["stop_location_id"], "to": b["stop_location_id"], "geometry": g["geometry"] if g else None})
-            v["legs"] = legs
+        prov = PROVIDERS.get(run["distance_provider"], lambda: None)() if detail else None
+        plain = _conn(plain=True) if prov else None
+        try:
+            for v in routes.values():
+                legs = []
+                for a, b in zip(v["stops"], v["stops"][1:]):
+                    fa, tb = a["stop_location_id"], b["stop_location_id"]
+                    if fa == tb:
+                        continue
+                    g = c.execute("SELECT geometry FROM distance_cache WHERE from_location_id=%s AND to_location_id=%s AND provider=%s AND profile=%s AND geometry IS NOT NULL",
+                                  (fa, tb, run["distance_provider"], prof)).fetchone()
+                    geom = g["geometry"] if g else None
+                    if geom is None and prov is not None:
+                        try:
+                            rd = route_detail(plain, prov, fa, tb)   # cached for next time; registers road segments
+                            geom = [list(pt) for pt in rd.geometry] if rd else None
+                        except Exception:  # noqa: BLE001 — provider down: straight line on the map
+                            geom = None
+                    legs.append({"from": fa, "to": tb, "geometry": geom})
+                v["legs"] = legs
+        finally:
+            if plain:
+                plain.close()
         run["routes"] = list(routes.values())
         run["unassigned"] = c.execute("SELECT u.shipment_id, sh.source_ref, u.reason, u.penalty_applied FROM optimization_unassigned u JOIN shipment sh USING (shipment_id) WHERE optimization_run_id=%s", (run_id,)).fetchall()
         return _json(run)
 
     @r.get("/runs/{run_id}")
-    def run_get(run_id: int):
+    def run_get(run_id: int, detail: bool = False):
         with _conn() as c:
-            return _run(c, run_id)
+            return _run(c, run_id, detail)
 
     @r.get("/compare")
     def compare(a: int, b: int):

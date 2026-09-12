@@ -172,6 +172,10 @@ def create_app(data_dir: Path = DATA_DIR, runs_dir: Path = RUNS_DIR, extractor=d
         def index():
             return FileResponse(WEB_DIR / "index.html")
 
+        @app.get("/product")
+        def product_index():
+            return FileResponse(WEB_DIR / "product" / "index.html")
+
     return app
 
 
