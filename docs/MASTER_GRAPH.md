@@ -102,5 +102,6 @@ CSV 원본 데이터에서 시작해 Baseline 재현 → Scenario 최적화 → 
 | Node | 상태 | 승인일 | tag |
 |------|------|--------|-----|
 | P01 Schema | FROZEN | 2026-09-11 | prod-01 |
-| P02 Mapping + ETL | REVIEW | — | — |
-| P03–P06 | PENDING | — | — |
+| P02 Mapping + ETL | FROZEN | 2026-09-11 | prod-02 |
+| P03 Routing Data | REVIEW | — | — |
+| P04–P06 | PENDING | — | — |
