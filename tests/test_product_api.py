@@ -113,6 +113,20 @@ def test_product_page_and_detail(client):
     assert r["routes"] and all(l["geometry"] is None for v in r["routes"] for l in v["legs"])
 
 
+def test_shipments_upload_and_list(client, tmp_path):
+    import openpyxl
+    from datetime import datetime
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Shipments"
+    ws.append(["shipment_id", "purchase_order", "delivery_date", "order_type", "customer_name", "phone", "address", "city", "state", "zip", "latitude", "longitude", "model_code", "pieces", "weight_lb", "volume_cuft", "service_minutes", "notes", "window"])
+    ws.append(["U1", "PO9", datetime(2026, 9, 21), "OBS", "Ann", "555", "1 Main St", "Atlanta", "GA", "30309", 33.79, -84.39, "M", 1, 100, 10, 30, None, "08:00-12:00"])
+    p = tmp_path / "u.xlsx"; wb.save(p)
+    r = client.post("/api/v2/shipments/upload", files={"file": ("u.xlsx", open(p, "rb"), "application/octet-stream")})
+    assert r.status_code == 201 and r.json()["shipments"] == 1, r.text
+    rows = client.get("/api/v2/shipments?date=2026-09-21").json()
+    assert len(rows) == 1 and rows[0]["source_ref"] == "U1" and rows[0]["customer_name"] == "Ann" and abs(rows[0]["weight_kg"] - 45.36) < 0.01
+    assert client.post("/api/v2/shipments/upload", files={"file": ("u.csv", b"x", "text/csv")}).status_code == 400
+
+
 def test_no_db_returns_503(tmp_path, monkeypatch):
     monkeypatch.setenv("TMOD_PG_DSN", "postgresql://x:x@localhost:1/none")
     with TestClient(create_app(tmp_path, tmp_path / "runs")) as c:

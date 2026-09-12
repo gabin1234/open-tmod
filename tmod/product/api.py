@@ -167,7 +167,7 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
             tmp.write(await file.read())
         try:
-            with _conn() as c:
+            with _conn(plain=True) as c:   # ETL unpacks rows positionally
                 c.execute(SEED.parent.joinpath("003_mapping_xlsx.sql").read_text())
                 rep = run_etl(c, system, load_rows_xlsx(tmp.name))
                 return {"rows": rep.rows, "shipments": rep.shipments, "locations": rep.locations, "customers": rep.customers, "skipped": dict(rep.skipped)}
@@ -179,7 +179,7 @@ def build_router(jobs: Jobs | None = None) -> APIRouter:
         from tmod.product.etl import load_rows_by
 
         def job():
-            with _conn() as c:
+            with _conn(plain=True) as c:
                 rep = run_etl(c, "BLUE_YONDER", load_rows_by(hub, None if crt_by in (None, "all") else crt_by))
                 return {"rows": rep.rows, "shipments": rep.shipments, "skipped": dict(rep.skipped)}
         return {"job_id": jobs.submit(job)}
