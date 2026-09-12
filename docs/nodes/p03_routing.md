@@ -26,4 +26,5 @@ CLI: `uv run python -m tmod.product.routing fill --provider VALHALLA|OSRM [--sce
 
 ## 알려진 한계 (ponytail)
 - 행렬 캐시는 segment 정보 없음(빠름). 조정 반영은 `route_detail`을 거친 쌍만. P04에서 시나리오 쌍을 미리 route_detail로 채우는 옵션(`settings.detail_routes`)
-- OSRM car 프로파일. truck 프로파일은 lua 커스텀 필요 → Valhalla truck이 기본 권장
+- OSRM car 프로파일(:5001, 5000은 macOS AirPlay). truck 프로파일은 lua 커스텀 필요 → Valhalla truck이 기본 권장
+- Valhalla 행렬은 50×50 truck에서 컨테이너가 죽음(재시작) → 블록 20(청크 10). 307 위치 = 약 950 호출, OSRM은 200 블록으로 11초

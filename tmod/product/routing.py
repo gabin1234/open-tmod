@@ -55,8 +55,9 @@ def _get(url: str, timeout: float = 30):
 
 class OSRMProvider:
     code = "OSRM"
+    max_block = 100   # osrm-routed default --max-table-size
 
-    def __init__(self, base_url: str = "http://localhost:5000", profile: str = "driving") -> None:
+    def __init__(self, base_url: str = "http://localhost:5001", profile: str = "driving") -> None:
         self.base, self.profile = base_url.rstrip("/"), profile
 
     def _coords(self, coords):
@@ -87,6 +88,7 @@ class OSRMProvider:
 
 class ValhallaRoadProvider:
     code = "VALHALLA"
+    max_block = 20    # valhalla crashes (container restart) on 50x50 truck matrices; 20 is safe
 
     def __init__(self, base_url: str = "http://localhost:8002", profile: str = "truck") -> None:
         self.base, self.profile = base_url.rstrip("/"), profile
@@ -119,8 +121,9 @@ def _locations(con, ids: Sequence[int]) -> dict[int, tuple[float, float]]:
     return {r[0]: (r[1], r[2]) for r in rows if r[1] is not None and r[2] is not None}
 
 
-def fill_distance_cache(con: psycopg.Connection, provider: RoadProvider, location_ids: Sequence[int], chunk: int = 100) -> int:
-    """Insert missing (from,to) pairs for provider/profile. Returns rows inserted."""
+def fill_distance_cache(con: psycopg.Connection, provider: RoadProvider, location_ids: Sequence[int], chunk: int | None = None) -> int:
+    """Insert missing (from,to) pairs for provider/profile. Returns rows inserted. chunk = half the provider's matrix limit."""
+    chunk = chunk or getattr(provider, "max_block", 100) // 2
     pts = _locations(con, location_ids)
     ids = list(pts)
     have = {(a, b) for a, b in con.execute("SELECT from_location_id, to_location_id FROM distance_cache WHERE provider=%s AND profile=%s AND from_location_id = ANY(%s)",

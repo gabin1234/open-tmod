@@ -32,4 +32,4 @@
 | W05 | xlsx upload | ~14k | ~10k | ~880k | tmod/web/upload.py |
 | P01 | PostgreSQL schema | ~22k | ~16k | ~950k | db/ddl 27 tables, seed, ERD, docker-backed test |
 | P02 | mapping + ETL | ~14k | ~11k | ~975k | tmod/product/etl.py, rule registry, xlsx mapping seed |
-| P03 | routing data (OSRM/Valhalla, cache, segments, adjustments) | ~20k | ~14k | ~1.01M | tmod/product/routing.py; OSRM Georgia on :5000 |
+| P03 | routing data (OSRM/Valhalla, cache, segments, adjustments) | ~20k | ~14k | ~1.01M | tmod/product/routing.py; OSRM Georgia on :5001 (5000 = macOS AirPlay) |

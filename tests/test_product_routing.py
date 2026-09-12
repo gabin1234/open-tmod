@@ -88,7 +88,7 @@ def test_valhalla_real():
     assert dist[0][1] > 20000 and dur[0][1] > 600
 
 
-@pytest.mark.skipif(not _up("http://localhost:5000/route/v1/driving/-84.334,33.587;-84.39,33.79?overview=false"), reason="osrm down")
+@pytest.mark.skipif(not _up("http://localhost:5001/route/v1/driving/-84.334,33.587;-84.39,33.79?overview=false"), reason="osrm down")
 def test_osrm_real():
     p = OSRMProvider()
     rd = p.route((33.587, -84.334), (33.79, -84.39))

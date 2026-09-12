@@ -12,3 +12,8 @@ services:
   # osrm: added in P03 (Georgia OSM, car/truck profile)
 volumes:
   tmod_pg: {}
+# --- P03: OSRM (Georgia, car profile). Build once:
+#   docker run --rm -v $OSRM_DIR:/data ghcr.io/project-osrm/osrm-backend osrm-extract -p /opt/car.lua /data/georgia-latest.osm.pbf
+#   ... osrm-partition /data/georgia-latest.osrm && ... osrm-customize /data/georgia-latest.osrm
+# then: docker run -d --name osrm --restart unless-stopped -p 5001:5000 -v $OSRM_DIR:/data ghcr.io/project-osrm/osrm-backend osrm-routed --algorithm mld --max-table-size 200 /data/georgia-latest.osrm
+# (port 5001: macOS AirPlay Receiver occupies 5000). Valhalla (truck) stays on :8002 via scripts/valhalla_up.sh.
