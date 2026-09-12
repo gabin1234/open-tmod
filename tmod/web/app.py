@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
 from tmod.lmd_optimize import LmdScenario
+from tmod.product.api import build_router
 from tmod.web.refresh import RefreshJobs, default_extractor
 from tmod.web.runs import DATA_DIR, RUNS_DIR, RunStore, list_datasets
 from tmod.web.upload import convert_xlsx
@@ -161,6 +162,8 @@ def create_app(data_dir: Path = DATA_DIR, runs_dir: Path = RUNS_DIR, extractor=d
         if not store.exists(run_id):
             raise HTTPException(404, "run not found")
         store.delete(run_id)
+
+    app.include_router(build_router())   # P05 product API (/api/v2), PostgreSQL-backed
 
     if WEB_DIR.exists():
         app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
