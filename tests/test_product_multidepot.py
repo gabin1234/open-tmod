@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from tmod.product.db import init
 from tmod.product.routing import fill_distance_cache
 from tmod.product.solve import run_scenario
@@ -16,10 +18,25 @@ class Grid:
         return None
 
 
+_OPEN: list = []
+
+
+@pytest.fixture(autouse=True)
+def _close_all():
+    yield
+    for c in _OPEN:
+        try:
+            c.rollback(); c.close()
+        except Exception:  # noqa: BLE001
+            pass
+    _OPEN.clear()
+
+
 def _db(pg, multi: bool):
     import psycopg
     init(pg, seed=True, drop=True)
     con = psycopg.connect(pg)
+    _OPEN.append(con)
     con.execute("SET search_path TO tmod")
     con.execute("UPDATE scenario SET distance_provider='MANUAL', time_limit_s=2, plan_date='2026-09-15', settings=%s", (json.dumps({"multi_depot": multi}),))
     con.execute("UPDATE scenario_constraint SET enabled_flag=false WHERE constraint_code='TIME_WINDOW'")

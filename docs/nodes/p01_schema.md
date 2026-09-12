@@ -1,7 +1,7 @@
 # P01 — PostgreSQL Schema
 
 상태: FROZEN (2026-09-11 승인)
-버전: 1.2 (P03: distance_cache.segment_durations_s; P07: optimization_route.stop_kind — 모두 additive)
+버전: 1.3 (P03 segment_durations_s; P07 stop_kind; P09 traffic_profile 테이블 — 모두 additive, 28 테이블)
 의존성: psycopg[binary] (테스트·ETL), Docker(postgres:16)
 
 ## 도메인 / 테이블 (27)

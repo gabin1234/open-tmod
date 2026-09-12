@@ -25,7 +25,9 @@ def connect(d: str | None = None) -> psycopg.Connection:
 
 def init(d: str | None = None, seed: bool = False, drop: bool = False) -> dict:
     with psycopg.connect(d or dsn(), autocommit=True) as con:
+        con.execute("SET lock_timeout = '30s'")   # a stray idle-in-transaction session must fail loudly, not hang the suite
         if drop:
+            con.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND state='idle in transaction'")
             con.execute("DROP SCHEMA IF EXISTS tmod CASCADE")
         con.execute(DDL.read_text())
         if seed:

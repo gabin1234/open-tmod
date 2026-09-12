@@ -108,3 +108,11 @@ SELECT ss.source_system_id, m.st, m.sc, m.tt, m.tc, m.rule, m.ord FROM source_sy
   ('TMS_IF.LMD_SHIPMENT','SHIP_TO_NM','customer','name',NULL,18)
 ) m(st,sc,tt,tc,rule,ord) WHERE ss.system_code='BLUE_YONDER'
 ON CONFLICT DO NOTHING;
+
+-- P09: sample traffic profile (weekday peaks) + dynamic traffic constraint
+INSERT INTO traffic_profile (day_of_week, time_from, time_to, factor, source)
+SELECT d, t.f, t.t, t.x, 'SAMPLE' FROM unnest(ARRAY['MON','TUE','WED','THU','FRI']::day_of_week[]) d, (VALUES ('07:00'::time,'09:00'::time,1.35),('16:00'::time,'18:30'::time,1.40)) t(f,t,x)
+WHERE NOT EXISTS (SELECT 1 FROM traffic_profile WHERE source='SAMPLE');
+INSERT INTO constraint_def (constraint_code, name, ctype, phase, param_schema, default_params, description) VALUES
+  ('DYNAMIC_TRAFFIC', 'Time-dependent travel time (iterative)', 'HARD', 3, '{"iterations":"integer"}', '{"iterations": 3}', 're-solve with leg departure-time durations from traffic_profile and road_adjustment')
+ON CONFLICT (constraint_code) DO NOTHING;

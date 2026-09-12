@@ -13,6 +13,7 @@ from tmod.product.model import ScenarioData, load_scenario, matrices, populate_s
 from tmod.product.routing import OSRMProvider, RoadProvider, ValhallaRoadProvider
 
 BIG = 10 ** 9
+PRIORITY_FACTOR = {1: 3.0, 2: 2.0, 3: 1.5, 4: 1.2, 5: 1.0}   # drop-penalty multiplier for optional shipments by priority (1 = highest)
 SCALE = 100          # objective integer scale
 NONOPT_PENALTY = 10 ** 7
 
@@ -132,7 +133,7 @@ def build_and_solve(data: ScenarioData, dist: list[list[int]], dur: list[list[in
     default_pen = float(C.get("OPTIONAL_DROP", {}).get("default_penalty", 500))
     for k, s in enumerate(stops, start=D):
         if "OPTIONAL_DROP" in C and s.optional:
-            pen = int(round((s.drop_penalty or default_pen) * SCALE))
+            pen = int(round((s.drop_penalty or default_pen) * PRIORITY_FACTOR.get(s.priority, 1.0) * SCALE))
         else:
             pen = NONOPT_PENALTY * SCALE
         rt.AddDisjunction([mgr.NodeToIndex(k)], pen)
@@ -145,6 +146,31 @@ def build_and_solve(data: ScenarioData, dist: list[list[int]], dur: list[list[in
     return mgr, rt, sol, tdim, D
 
 
+def _departures(data: ScenarioData, mgr, rt, sol, tdim, D: int) -> dict[tuple[int, int], int]:
+    """(from_node, to_node) -> departure second, from a solution. Used to re-time legs for DYNAMIC_TRAFFIC."""
+    out: dict[tuple[int, int], int] = {}
+    for vi, v in enumerate(data.vehicles):
+        idx = rt.Start(vi)
+        while not rt.IsEnd(idx):
+            nxt = sol.Value(rt.NextVar(idx))
+            i, j = mgr.IndexToNode(idx), mgr.IndexToNode(nxt)
+            depart = sol.Value(tdim.CumulVar(idx)) + (data.stops[i - D].service_s if i >= D else 0)
+            out[(i, j)] = depart
+            idx = nxt
+    return out
+
+
+def _sequence(data: ScenarioData, mgr, rt, sol) -> tuple:
+    seq = []
+    for vi in range(len(data.vehicles)):
+        idx, route = rt.Start(vi), []
+        while not rt.IsEnd(idx):
+            route.append(mgr.IndexToNode(idx))
+            idx = sol.Value(rt.NextVar(idx))
+        seq.append(tuple(route))
+    return tuple(seq)
+
+
 def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProvider | None = None) -> SolveResult:
     data = load_scenario(con, scenario_code)
     run_id = con.execute("INSERT INTO optimization_run (scenario_id, start_time, solver_status, engine_params) VALUES (%s, now(), 'RUNNING', %s) RETURNING optimization_run_id",
@@ -154,6 +180,21 @@ def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProv
     try:
         dist, dur = matrices(con, data, provider)
         mgr, rt, sol, tdim, D = build_and_solve(data, dist, dur)
+        iterations_used = 1
+        if sol is not None and "DYNAMIC_TRAFFIC" in data.constraints:
+            max_it = int(data.constraints["DYNAMIC_TRAFFIC"].get("iterations", 3))
+            prev = _sequence(data, mgr, rt, sol)
+            while iterations_used < max_it:
+                dist, dur = matrices(con, data, provider, _departures(data, mgr, rt, sol, tdim, D))
+                mgr, rt, sol2, tdim, D = build_and_solve(data, dist, dur)
+                iterations_used += 1
+                if sol2 is None:
+                    break
+                sol = sol2
+                cur = _sequence(data, mgr, rt, sol)
+                if cur == prev:
+                    break
+                prev = cur
         if sol is None:
             con.execute("UPDATE optimization_run SET solver_status='INFEASIBLE', end_time=now() WHERE optimization_run_id=%s", (run_id,))
             con.execute("UPDATE scenario SET status='READY' WHERE scenario_id=%s", (data.scenario_id,))
@@ -218,8 +259,9 @@ def run_scenario(con: psycopg.Connection, scenario_code: str, provider: RoadProv
             con.cursor().executemany("INSERT INTO optimization_unassigned (optimization_run_id, shipment_id, reason, penalty_applied) VALUES (%s,%s,%s,%s)", un)
         status = "OPTIMAL" if rt.status() == 1 else "FEASIBLE"
         con.execute("""UPDATE optimization_run SET end_time=now(), solver_status=%s, objective_value=%s, vehicle_count=%s, total_distance_m=%s, total_drive_s=%s,
-                       total_service_s=%s, total_route_s=%s, total_cost=%s WHERE optimization_run_id=%s""",
-                    (status, sol.ObjectiveValue() / SCALE, used, tot_dist, tot_drive, tot_service, tot_route, round(tot_cost, 2), run_id))
+                       total_service_s=%s, total_route_s=%s, total_cost=%s, engine_params = engine_params || %s::jsonb WHERE optimization_run_id=%s""",
+                    (status, sol.ObjectiveValue() / SCALE, used, tot_dist, tot_drive, tot_service, tot_route, round(tot_cost, 2),
+                     psycopg.types.json.Json({"iterations_used": iterations_used}), run_id))
         con.execute("UPDATE scenario SET status='DONE' WHERE scenario_id=%s", (data.scenario_id,))
         con.commit()
         return SolveResult(run_id, status, used, len(data.stops), len(un), tot_dist, tot_route, round(tot_cost, 2))

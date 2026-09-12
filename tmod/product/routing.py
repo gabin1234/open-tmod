@@ -184,16 +184,30 @@ def route_detail(con: psycopg.Connection, provider: RoadProvider, from_id: int, 
     return rd
 
 
+def traffic_profile(con: psycopg.Connection, plan_date: date) -> list[tuple[int, int, float]]:
+    """Global (region-less) traffic_profile windows for the day: [(from_s, to_s, factor)]."""
+    dow = DOW[plan_date.weekday()]
+    rows = con.execute("""SELECT time_from, time_to, factor FROM traffic_profile WHERE active_flag AND region_code IS NULL
+                          AND (day_of_week IS NULL OR day_of_week=%s::day_of_week) AND effective_from <= %s AND (effective_to IS NULL OR effective_to >= %s)""",
+                       (dow, plan_date, plan_date)).fetchall()
+    return [(tf.hour * 3600 + tf.minute * 60, tt.hour * 3600 + tt.minute * 60 if tt.hour < 24 else 86400, float(f)) for tf, tt, f in rows]
+
+
+def _profile_factor(profile: list[tuple[int, int, float]], t_s: float) -> float:
+    return max((f for tf, tt, f in profile if tf <= (t_s % 86400) < tt), default=1.0)
+
+
 def adjusted_duration(con: psycopg.Connection, from_id: int, to_id: int, provider_code: str, profile: str, plan_date: date, depart_s: int,
-                      scenario_id: int | None = None) -> int | None:
-    """Cache duration with road_adjustment factors applied per segment at the moment it is traversed."""
+                      scenario_id: int | None = None, day_profile: list[tuple[int, int, float]] | None = None) -> int | None:
+    """Cache duration with time-of-day factors: segment-level road_adjustment where known, else the global traffic_profile."""
     row = con.execute("SELECT duration_s, segment_ids, segment_durations_s FROM distance_cache WHERE from_location_id=%s AND to_location_id=%s AND provider=%s AND profile=%s",
                       (from_id, to_id, provider_code, profile)).fetchone()
     if row is None:
         return None
     base, segs, durs = row
+    prof = day_profile if day_profile is not None else traffic_profile(con, plan_date)
     if not segs or not durs:
-        return base
+        return int(round(base * _profile_factor(prof, depart_s)))
     dow = DOW[plan_date.weekday()]
     if scenario_id is None:
         adj = con.execute("""SELECT segment_id, day_of_week, time_from, time_to, factor FROM road_adjustment
@@ -209,10 +223,12 @@ def adjusted_duration(con: psycopg.Connection, from_id: int, to_id: int, provide
         by_seg.setdefault(sid, []).append((tf.hour * 3600 + tf.minute * 60, tt.hour * 3600 + tt.minute * 60 if tt.hour < 24 else 86400, float(f)))
     clock, total = float(depart_s), 0.0
     for sid, d in zip(segs, durs):
-        factor = 1.0
+        factor = None
         for tf, tt, f in by_seg.get(sid, []):
             if tf <= (clock % 86400) < tt:
-                factor = max(factor, f)
+                factor = max(factor or 1.0, f)
+        if factor is None:
+            factor = _profile_factor(prof, clock)
         total += d * factor
         clock += d * factor
     return int(round(total))

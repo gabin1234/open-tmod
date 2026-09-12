@@ -9,13 +9,13 @@ def test_ddl_seed_and_constraints(pg):
     import psycopg
     from tmod.product.db import init
     info = init(pg, seed=True, drop=True)
-    assert info["tables"] == 27 and info["enums"] == 6 and info["foreign_keys"] >= 30, info
+    assert info["tables"] == 28 and info["enums"] == 6 and info["foreign_keys"] >= 30, info
     assert init(pg, seed=True) == info  # idempotent DDL + seed
     with psycopg.connect(pg, autocommit=True) as con:
         con.execute("SET search_path TO tmod")
         q = lambda s: con.execute(s).fetchone()[0]  # noqa: E731
         assert q("SELECT count(*) FROM vehicle") == 10
-        assert q("SELECT count(*) FROM constraint_def") == 11 and q("SELECT count(*) FROM objective_def") == 5
+        assert q("SELECT count(*) FROM constraint_def") == 12 and q("SELECT count(*) FROM objective_def") == 5
         assert q("SELECT count(*) FROM scenario") == 1 and q("SELECT count(*) FROM road_adjustment") == 5
         assert q("SELECT count(*) FROM source_mapping_master") == 18
         assert q("SELECT sum(weight_pct) FROM scenario_objective_weight") == 100

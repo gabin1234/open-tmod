@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 import psycopg
 
-from tmod.product.routing import RoadProvider, adjusted_duration, fill_distance_cache
+from tmod.product.routing import RoadProvider, adjusted_duration, fill_distance_cache, traffic_profile
 
 PROFILE = {"OSRM": "driving", "VALHALLA": "truck", "MANUAL": "test", "HAVERSINE": "car", "PCMILER": "truck"}
 
@@ -199,8 +199,10 @@ def load_scenario(con: psycopg.Connection, scenario_code: str) -> ScenarioData:
     return ScenarioData(sid, scenario_code, plan_date, tz, depot_loc, prov, PROFILE.get(prov, "driving"), tl, vehicles, stops, constraints, weights, unsupported, settings or {})
 
 
-def matrices(con: psycopg.Connection, data: ScenarioData, provider: RoadProvider | None = None) -> tuple[list[list[int]], list[list[int]]]:
-    """(distance_m, duration_s) over data.locations from distance_cache; fills missing pairs via provider; applies road adjustments."""
+def matrices(con: psycopg.Connection, data: ScenarioData, provider: RoadProvider | None = None,
+             depart_by_pair: dict[tuple[int, int], int] | None = None) -> tuple[list[list[int]], list[list[int]]]:
+    """(distance_m, duration_s) over data.locations from distance_cache; fills missing pairs via provider.
+    Time-of-day factors (ROAD_ADJUSTMENT / DYNAMIC_TRAFFIC) use depart_by_pair[(i, j)] seconds when given, else the earliest shift start."""
     locs = data.locations
     rows = con.execute("SELECT from_location_id, to_location_id, distance_m, duration_s FROM distance_cache WHERE provider=%s AND profile=%s AND from_location_id = ANY(%s) AND to_location_id = ANY(%s)",
                        (data.provider_code, data.profile, locs, locs)).fetchall()
@@ -213,8 +215,9 @@ def matrices(con: psycopg.Connection, data: ScenarioData, provider: RoadProvider
         rows = con.execute("SELECT from_location_id, to_location_id, distance_m, duration_s FROM distance_cache WHERE provider=%s AND profile=%s AND from_location_id = ANY(%s) AND to_location_id = ANY(%s)",
                            (data.provider_code, data.profile, locs, locs)).fetchall()
         have = {(a, b): (d, t) for a, b, d, t in rows}
-    adjust = "ROAD_ADJUSTMENT" in data.constraints
+    adjust = "ROAD_ADJUSTMENT" in data.constraints or "DYNAMIC_TRAFFIC" in data.constraints
     depart = min((v.shift_start_s for v in data.vehicles), default=8 * 3600)
+    prof = traffic_profile(con, data.plan_date) if adjust else []
     n = len(locs)
     dist = [[0] * n for _ in range(n)]
     dur = [[0] * n for _ in range(n)]
@@ -226,6 +229,7 @@ def matrices(con: psycopg.Connection, data: ScenarioData, provider: RoadProvider
             if d is None:
                 raise ValueError(f"no distance for {a}->{b}")
             if adjust:
-                t = adjusted_duration(con, a, b, data.provider_code, data.profile, data.plan_date, depart, data.scenario_id) or t
+                dep = (depart_by_pair or {}).get((i, j), depart)
+                t = adjusted_duration(con, a, b, data.provider_code, data.profile, data.plan_date, dep, data.scenario_id, prof) or t
             dist[i][j], dur[i][j] = int(d), int(t)
     return dist, dur

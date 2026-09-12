@@ -20,10 +20,25 @@ class Grid:
         return None
 
 
+_OPEN: list = []
+
+
+@pytest.fixture(autouse=True)
+def _close_all():
+    yield
+    for c in _OPEN:
+        try:
+            c.rollback(); c.close()
+        except Exception:  # noqa: BLE001
+            pass
+    _OPEN.clear()
+
+
 def _db(pg, n_vehicles=2, cap_kg=1000, window=True):
     import psycopg
     init(pg, seed=True, drop=True)
     con = psycopg.connect(pg)
+    _OPEN.append(con)
     con.execute("SET search_path TO tmod")
     con.execute("UPDATE scenario SET distance_provider='MANUAL', time_limit_s=2, plan_date='2026-09-15'")
     con.execute("UPDATE vehicle_type SET capacity_kg=%s, max_stops=NULL", (cap_kg,))

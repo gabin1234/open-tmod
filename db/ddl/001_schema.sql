@@ -416,3 +416,19 @@ ALTER TABLE distance_cache ADD COLUMN IF NOT EXISTS segment_durations_s integer[
 
 -- v1.2 (P07): stop kind on route rows (DEPOT | PICKUP | DELIVERY)
 ALTER TABLE optimization_route ADD COLUMN IF NOT EXISTS stop_kind text NOT NULL DEFAULT 'DELIVERY';
+
+-- v1.3 (P09): historical/global travel-time profile (applies where no segment-level adjustment exists)
+CREATE TABLE IF NOT EXISTS traffic_profile (
+  profile_id      bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  day_of_week     day_of_week,                 -- null = every day
+  time_from       time NOT NULL,
+  time_to         time NOT NULL,
+  factor          numeric(6,3) NOT NULL CHECK (factor > 0),
+  source          text NOT NULL DEFAULT 'SAMPLE',   -- SAMPLE | HISTORICAL | MANUAL
+  region_code     text,                        -- null = global
+  active_flag     boolean NOT NULL DEFAULT true,
+  effective_from  date NOT NULL DEFAULT CURRENT_DATE,
+  effective_to    date,
+  created_at timestamptz NOT NULL DEFAULT now(), created_by text NOT NULL DEFAULT current_user,
+  updated_at timestamptz NOT NULL DEFAULT now(), updated_by text NOT NULL DEFAULT current_user
+);

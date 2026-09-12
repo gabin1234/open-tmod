@@ -24,10 +24,25 @@ class Mock:
                            (Edge(111, "v:1", "Silver Avenue", 900.0, 120.0, ((a[0], a[1]), (a[0] + 0.005, a[1]))), Edge(222, "v:2", "Oak St", 600.0, 80.0)))
 
 
+_OPEN: list = []
+
+
+@pytest.fixture(autouse=True)
+def _close_all():
+    yield
+    for c in _OPEN:
+        try:
+            c.rollback(); c.close()
+        except Exception:  # noqa: BLE001
+            pass
+    _OPEN.clear()
+
+
 def _setup(pg):
     import psycopg
     init(pg, seed=True, drop=True)
     con = psycopg.connect(pg)
+    _OPEN.append(con)
     con.execute("SET search_path TO tmod")
     ids = [con.execute("INSERT INTO location (location_code, latitude, longitude) VALUES (%s,%s,%s) RETURNING location_id", (f"L{i}", 33.5 + i / 100, -84.3)).fetchone()[0] for i in range(3)]
     con.commit()
@@ -59,6 +74,10 @@ def test_adjusted_duration(pg):
     con.execute("INSERT INTO road_adjustment (segment_id, day_of_week, time_from, time_to, factor, reason) VALUES (%s,'MON','07:00','09:00',1.5,'am')", (seg,))
     con.commit()
     mon = date(2026, 9, 14)
+    # seeded SAMPLE traffic_profile (MON 07-09 x1.35) applies to the segment without its own adjustment
+    assert adjusted_duration(con, ids[0], ids[1], "MANUAL", "test", mon, 8 * 3600) == round(120 * 1.5 + 80 * 1.35)
+    con.execute("UPDATE traffic_profile SET active_flag=false")
+    con.commit()
     assert adjusted_duration(con, ids[0], ids[1], "MANUAL", "test", mon, 8 * 3600) == 120 * 1.5 + 80
     assert adjusted_duration(con, ids[0], ids[1], "MANUAL", "test", mon, 9 * 3600 + 1) == 200
     assert adjusted_duration(con, ids[0], ids[1], "MANUAL", "test", date(2026, 9, 15), 8 * 3600) == 200  # TUE
