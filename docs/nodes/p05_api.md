@@ -1,6 +1,6 @@
 # P05 — Product API
 
-상태: REVIEW (승인 대기)
+상태: FROZEN (2026-09-12 승인)
 버전: 1.0
 기존 W01 앱(`tmod/web/app.py`)에 `/api/v2/*` 라우터로 마운트. DB = PostgreSQL(P01), 실행 = P04. 연결은 요청마다 psycopg 커넥션(`TMOD_PG_DSN`), DB 불가 시 503.
 
