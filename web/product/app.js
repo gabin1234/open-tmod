@@ -36,14 +36,20 @@ async function init() {
   $("sc-depot").innerHTML = depots.map(d => `<option value="${d.depot_code}">${d.depot_code} — ${d.name}</option>`).join("");
   $("sc-date").value = new Date().toISOString().slice(0, 10);
   $("sc-create").onclick = createScenario;
+  $("sc-search").oninput = renderScenarioList;
   await loadScenarios();
 }
 
 // ---------- scenarios ----------
 async function loadScenarios() {
-  const list = await api("/api/v2/scenarios");
-  $("sc-list").querySelector("tbody").innerHTML = list.map(s => `<tr data-code="${s.scenario_code}" class="${state.scenario && state.scenario.scenario_code === s.scenario_code ? "sel" : ""}">
-    <td>${s.scenario_code}</td><td>${s.plan_date}</td><td><span class="badge ${s.status}">${s.status}</span></td><td class="num">${s.shipments}</td><td class="num">${s.runs}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">none</td></tr>';
+  state.scenarios = await api("/api/v2/scenarios");
+  renderScenarioList();
+}
+function renderScenarioList() {
+  const q = ($("sc-search").value || "").toLowerCase();
+  const list = (state.scenarios || []).filter(s => !q || `${s.scenario_code} ${s.name} ${s.plan_date} ${s.status}`.toLowerCase().includes(q));
+  $("sc-list").querySelector("tbody").innerHTML = list.map(s => `<tr data-code="${s.scenario_code}" class="${state.scenario && state.scenario.scenario_code === s.scenario_code ? "sel" : ""}" title="${s.name}">
+    <td><b>${s.scenario_code}</b><div class="muted">${s.name && s.name !== s.scenario_code ? s.name : ""}</div></td><td>${s.plan_date}</td><td><span class="badge ${s.status}">${s.status}</span></td><td class="num">${s.shipments}</td><td class="num">${s.runs}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">no scenarios</td></tr>';
   $("sc-list").querySelectorAll("tr[data-code]").forEach(tr => tr.onclick = () => openScenario(tr.dataset.code));
 }
 
@@ -56,6 +62,7 @@ async function createScenario() {
     const s = await J("/api/v2/scenarios", "POST", {code, name: $("sc-name").value.trim() || code, plan_date: $("sc-date").value,
       depot_code: $("sc-depot").value, provider: "VALHALLA", time_limit_s: Number($("sc-tl").value || 30)});
     $("sc-create-msg").textContent = `created · ${s.populated} shipments for ${s.plan_date}`;
+    $("sc-code").value = ""; $("sc-name").value = "";
     await loadScenarios(); openScenario(s.scenario_code);
   } catch (e) { $("sc-create-msg").innerHTML = `<span class="err">${e.message}</span>`; }
 }
@@ -72,25 +79,29 @@ async function openScenario(code) {
   const adj = s.adjustments.map(a => `<label style="margin:2px 0"><input type="checkbox" data-a="${a.adjustment_id}" ${a.enabled ? "checked" : ""}> ${a.road_name} ${a.day_of_week || "daily"} ${a.time_from.slice(0, 5)}–${a.time_to.slice(0, 5)} ×${a.factor} <span class="muted">${a.reason || ""}</span></label>`).join("") || '<div class="muted">no road adjustments defined (Road Weight tab)</div>';
   const runs = s.runs.map(r => `<tr data-run="${r.optimization_run_id}"><td>#${r.optimization_run_id}</td><td><span class="badge ${r.solver_status}">${r.solver_status}</span></td><td class="num">${fmt(r.vehicle_count)}</td><td class="num">${r.total_distance_mi == null ? "–" : mi(r.total_distance_mi)}</td><td class="num">${r.total_route_s == null ? "–" : fmt(r.total_route_s / 60)}</td><td class="num">${r.total_cost == null ? "–" : "$" + fmt(r.total_cost)}</td><td class="muted">${r.created_at.slice(5, 16).replace("T", " ")}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">no runs</td></tr>';
   $("sc-detail").innerHTML = `
-   <div class="card"><h3>${s.scenario_code} <span class="badge ${s.status}">${s.status}</span></h3>
-    <div class="row"><label>name<input id="e-name" value="${s.name}"></label><label>plan date<input value="${s.plan_date}" disabled></label><label>depot<input value="${s.depot_code}" disabled></label>
-     <label>road routing<input value="Valhalla · truck (${s.distance_provider})" disabled></label><label>time limit s<input id="e-tl" type="number" value="${s.time_limit_s}"></label></div>
-    <label style="margin-top:6px"><input type="checkbox" id="e-multidepot" ${s.settings && s.settings.multi_depot ? "checked" : ""}> multi-depot: vehicles start and end at their own depot</label>
-    <div class="muted" style="margin-top:6px">shipments in scenario: <b>${s.shipment_count}</b> <button class="btn" id="e-populate" style="padding:1px 8px;font-size:12px">populate from ${s.plan_date}</button></div>
-    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="e-save">Save</button><button class="btn primary" id="e-run">Optimize</button><button class="btn" id="e-copy">Copy</button><button class="btn danger" id="e-del">Delete</button><span id="e-msg" class="muted"></span></div></div>
-   <div class="grid" style="grid-template-columns:1fr 1fr">
-    <div class="card"><h3>Constraints</h3><table><thead><tr><th>constraint</th><th>params</th></tr></thead><tbody>${cons}</tbody></table></div>
-    <div><div class="card"><h3>Objective weights (sum 100)</h3>${w}</div>
-         <div class="card"><h3>Vehicles (${s.vehicles.length})</h3>${veh}</div>
-         <div class="card"><h3>Road adjustments</h3>${adj}</div></div>
-   </div>
-   <div class="card"><h3>Shipments in scenario (<span id="e-shcount">${s.shipment_count}</span>)</h3>
-    <div class="row" style="align-items:end;margin-bottom:6px"><label>add by date<input id="e-add-date" type="date" value="${s.plan_date}"></label><button class="btn" id="e-add-date-btn">Add date</button>
-     <label>add by import batch<select id="e-add-batch"></select></label><button class="btn" id="e-add-batch-btn">Add batch</button><button class="btn danger" id="e-clear-btn">Remove all</button><span id="e-sh-msg" class="muted"></span></div>
-    <div class="scroll" style="max-height:32vh"><table id="e-shipments"><thead><tr><th>ref</th><th>date</th><th>kind</th><th>customer</th><th>zip</th><th class="num">lb</th><th class="num">svc min</th><th>window</th><th>batch</th><th></th></tr></thead><tbody></tbody></table></div></div>
-   <div class="card"><h3>Runs</h3><table><thead><tr><th>run</th><th>status</th><th class="num">veh</th><th class="num">mi</th><th class="num">route min</th><th class="num">cost</th><th>at</th></tr></thead><tbody id="e-runs">${runs}</tbody></table></div>`;
+   <div class="card">
+    <div class="hdr"><span class="code">${s.scenario_code}</span><span class="badge ${s.status}">${s.status}</span>
+     <label>name<input id="e-name" value="${s.name}"></label><label>plan date<input value="${s.plan_date}" disabled style="width:120px"></label><label>depot<input value="${s.depot_code}" disabled style="width:120px"></label>
+     <label>road routing<input value="Valhalla · truck" disabled style="width:130px"></label><label>time limit s<input id="e-tl" type="number" value="${s.time_limit_s}" style="width:90px"></label>
+     <label style="min-width:auto"><input type="checkbox" id="e-multidepot" ${s.settings && s.settings.multi_depot ? "checked" : ""}> multi-depot</label></div>
+    <div class="actions"><button class="btn primary" id="e-run">Optimize</button><button class="btn" id="e-save">Save</button><button class="btn" id="e-copy">Copy</button><button class="btn danger" id="e-del">Delete</button>
+     <span class="muted">shipments <b id="e-shcount">${s.shipment_count}</b> · runs <b>${s.runs.length}</b></span><span id="e-msg" class="muted"></span></div>
+    <div class="subtabs"><button data-sub="setup" class="on">Setup</button><button data-sub="ships">Shipments (${s.shipment_count})</button><button data-sub="runs">Runs (${s.runs.length})</button></div>
+    <div class="sub on" data-sub="setup"><div class="grid" style="grid-template-columns:1fr 1fr">
+      <div><h3 style="font-size:13px;color:var(--muted);text-transform:uppercase;margin:4px 0 6px">Constraints</h3><table><thead><tr><th>constraint</th><th>params</th></tr></thead><tbody>${cons}</tbody></table></div>
+      <div><h3 style="font-size:13px;color:var(--muted);text-transform:uppercase;margin:4px 0 6px">Objective weights (sum 100)</h3>${w}
+           <h3 style="font-size:13px;color:var(--muted);text-transform:uppercase;margin:14px 0 6px">Vehicles (${s.vehicles.length})</h3>${veh}
+           <h3 style="font-size:13px;color:var(--muted);text-transform:uppercase;margin:14px 0 6px">Road adjustments</h3>${adj}</div></div></div>
+    <div class="sub" data-sub="ships">
+     <div class="row" style="align-items:end;margin-bottom:6px"><label>add by date<input id="e-add-date" type="date" value="${s.plan_date}"></label><button class="btn" id="e-add-date-btn">Add date</button>
+      <label>add by import batch<select id="e-add-batch"></select></label><button class="btn" id="e-add-batch-btn">Add batch</button><button class="btn" id="e-populate">Populate from ${s.plan_date}</button><button class="btn danger" id="e-clear-btn">Remove all</button><span id="e-sh-msg" class="muted"></span></div>
+     <div class="scroll" style="max-height:52vh"><table id="e-shipments"><thead><tr><th>ref</th><th>date</th><th>kind</th><th>customer</th><th>zip</th><th class="num">lb</th><th class="num">svc min</th><th>window</th><th>batch</th><th></th></tr></thead><tbody></tbody></table></div></div>
+    <div class="sub" data-sub="runs"><table><thead><tr><th>run</th><th>status</th><th class="num">veh</th><th class="num">mi</th><th class="num">route min</th><th class="num">cost</th><th>at</th></tr></thead><tbody id="e-runs">${runs}</tbody></table>
+     <div class="muted" style="margin-top:6px">click a run to open it on the map</div></div>
+   </div>`;
+  $("sc-detail").querySelectorAll(".subtabs button").forEach(b => b.onclick = () => { $("sc-detail").querySelectorAll(".subtabs button").forEach(x => x.classList.toggle("on", x === b)); $("sc-detail").querySelectorAll(".sub").forEach(x => x.classList.toggle("on", x.dataset.sub === b.dataset.sub)); });
+  $("e-save").onclick = saveScenario; $("e-run").onclick = runScenario; $("e-copy").onclick = copyScenario; $("e-del").onclick = deleteScenario; $("e-populate").onclick = async () => { const r = await api(`/api/v2/scenarios/${encodeURIComponent(code)}/populate`, {method: "POST"}); $("e-sh-msg").textContent = `added ${r.added}`; loadScenarioShipments(code); loadScenarios(); };
   loadScenarioShipments(code);
-  $("e-save").onclick = saveScenario; $("e-run").onclick = runScenario; $("e-copy").onclick = copyScenario; $("e-del").onclick = deleteScenario; $("e-populate").onclick = async () => { const r = await api(`/api/v2/scenarios/${code}/populate`, {method: "POST"}); $("e-msg").textContent = `added ${r.added}`; openScenario(code); };
   $("e-runs").querySelectorAll("tr[data-run]").forEach(tr => tr.onclick = () => { show("result"); loadRunList().then(() => { $("run-sel").value = tr.dataset.run; loadRun(); }); });
   $("sc-detail").querySelectorAll("input[data-a]").forEach(cb => cb.onchange = () => api(`/api/v2/scenarios/${code}/adjustments/${cb.dataset.a}?enabled=${cb.checked}`, {method: "POST"}));
 }
@@ -157,7 +168,7 @@ async function deleteScenario() {
   if (!confirm(`Archive scenario ${code}? Its runs stay in the database but it disappears from the list.`)) return;
   try { await api(`/api/v2/scenarios/${encodeURIComponent(code)}`, {method: "DELETE"}); }
   catch (e) { $("e-msg").innerHTML = `<span class="err">${e.message}</span>`; return; }
-  state.scenario = null; $("sc-detail").innerHTML = '<div class="muted">select a scenario</div>'; loadScenarios();
+  state.scenario = null; $("sc-detail").innerHTML = '<div class="empty"><b>Scenario archived.</b><ol><li>Pick another scenario on the left, or open <b>New scenario</b>.</li></ol></div>'; loadScenarios();
 }
 
 // ---------- result map ----------

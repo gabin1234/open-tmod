@@ -23,3 +23,6 @@ END $$;
 UPDATE source_mapping_master SET transformation_rule='float' WHERE transformation_rule IN ('lb_to_kg','cuft_to_m3');
 UPDATE source_mapping_master SET target_column='weight_lb' WHERE target_column='weight_kg';
 UPDATE source_mapping_master SET target_column='volume_cuft' WHERE target_column='volume_m3';
+
+-- P14: objective label units
+UPDATE objective_def SET unit='mi' WHERE objective_code='DISTANCE' AND unit='m';

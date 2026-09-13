@@ -50,7 +50,7 @@ INSERT INTO objective_def (objective_code, name, unit, phase) VALUES
   ('COST', 'Total cost (fixed + per km + per hour)', 'currency', 1),
   ('TRAVEL_TIME', 'Total drive time', 's', 1),
   ('VEHICLE_COUNT', 'Vehicles used', 'count', 1),
-  ('DISTANCE', 'Total distance', 'm', 1),
+  ('DISTANCE', 'Total distance', 'mi', 1),
   ('LATENESS', 'Total lateness', 's', 3)
 ON CONFLICT (objective_code) DO NOTHING;
 

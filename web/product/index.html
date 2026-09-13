@@ -27,21 +27,40 @@ button.primary{background:var(--acc);color:#fff;border-color:var(--acc)}button.d
 pre{font-size:12px;background:var(--bg);padding:8px;border-radius:4px;overflow:auto}
 .scroll{max-height:60vh;overflow:auto}
 .editable td[contenteditable]{background:#fffdf3}
+.grid.sc{grid-template-columns:500px minmax(0,1fr)}
+.tablewrap{overflow:auto;max-height:52vh}
+.tablewrap table{table-layout:fixed;width:100%}
+.tablewrap td,.tablewrap th{white-space:nowrap}.tablewrap td:first-child{white-space:normal;word-break:break-word}
+.subtabs{display:flex;gap:4px;border-bottom:1px solid var(--b);margin:12px 0 10px}
+.subtabs button{background:none;border:none;padding:6px 12px;font:inherit;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.subtabs button.on{color:var(--ink);border-color:var(--acc);font-weight:600}
+.sub{display:none}.sub.on{display:block}
+.empty{border:1px dashed var(--b);border-radius:6px;padding:28px;color:var(--muted);max-width:560px}
+.empty ol{margin:8px 0 0 18px;padding:0}
+.hdr{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:end}
+.hdr label{margin:0;min-width:120px}.hdr .code{font-size:16px;font-weight:600;align-self:center;margin-right:6px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+details.newsc summary{cursor:pointer;font-size:13px;color:var(--acc);font-weight:600;list-style:none}
+details.newsc summary::before{content:"+ ";}
+details.newsc[open] summary::before{content:"– ";}
+.search{margin-bottom:6px}
 </style></head><body>
 <header><h1>Open T-Modeler</h1>
 <nav><button data-v="scenarios" class="on">Scenarios</button><button data-v="result">Map / Result</button><button data-v="shipments">Shipments</button><button data-v="vehicles">Vehicles</button><button data-v="road">Road Weight</button><button data-v="compare">Compare</button></nav>
 <span id="health">…</span></header>
 <main>
-<section id="v-scenarios" class="view on"><div class="grid">
+<section id="v-scenarios" class="view on"><div class="grid sc">
  <div>
-  <div class="card"><h3>Scenarios</h3><table id="sc-list"><thead><tr><th>code</th><th>date</th><th>status</th><th class="num">shpm</th><th class="num">runs</th></tr></thead><tbody></tbody></table></div>
-  <div class="card"><h3>Create</h3>
-   <div class="row"><label>code<input id="sc-code" placeholder="SC-2026-09-15-A"></label><label>plan date<input id="sc-date" type="date"></label></div>
-   <label>name<input id="sc-name"></label>
+  <div class="card"><details class="newsc" id="sc-new"><summary>New scenario</summary>
+   <div class="row" style="margin-top:8px"><label>code<input id="sc-code" placeholder="SC-2026-09-15-A"></label><label>plan date<input id="sc-date" type="date"></label></div>
+   <label>name <span class="muted">(optional, defaults to code)</span><input id="sc-name"></label>
    <div class="row"><label>depot<select id="sc-depot"></select></label><label>road routing<input value="Valhalla · truck" disabled></label><label>time limit s<input id="sc-tl" type="number" value="30"></label></div>
-   <button class="btn primary" id="sc-create" style="margin-top:8px">Create scenario</button><div id="sc-create-msg" class="muted"></div></div>
+   <button class="btn primary" id="sc-create" style="margin-top:8px">Create scenario</button><div id="sc-create-msg" class="muted"></div>
+   <div class="muted" style="margin-top:6px">Shipments for the plan date are added automatically. To optimize an uploaded file instead, use Shipments → “Create scenario from this upload”.</div></details></div>
+  <div class="card"><h3>Scenarios</h3><input class="search" id="sc-search" placeholder="filter by code, name, date…">
+   <div class="tablewrap"><table id="sc-list"><colgroup><col style="width:46%"><col style="width:22%"><col style="width:14%"><col style="width:9%"><col style="width:9%"></colgroup><thead><tr><th>code</th><th>date</th><th>status</th><th class="num">shpm</th><th class="num">runs</th></tr></thead><tbody></tbody></table></div></div>
  </div>
- <div id="sc-detail"><div class="muted">select a scenario</div></div>
+ <div id="sc-detail"><div class="empty"><b>No scenario selected.</b><ol><li>Pick a scenario on the left, or open <b>New scenario</b>.</li><li>Check constraints, objective weights and vehicles.</li><li>Press <b>Optimize</b>, then open <b>Map / Result</b>.</li></ol></div></div>
 </div></section>
 
 <section id="v-result" class="view"><div class="grid" style="grid-template-columns:1fr 380px">

@@ -114,3 +114,4 @@ CSV 원본 데이터에서 시작해 Baseline 재현 → Scenario 최적화 → 
 | P11 Ops (compose · auth · backup · health) | FROZEN | 2026-09-12 | prod-11, product-v0.4 |
 | P12 Imperial units · Valhalla-only · UI hardening | FROZEN | 2026-09-12 | prod-12, product-v0.5 |
 | P13 Scenario ↔ Shipment linking (upload batch) | FROZEN | 2026-09-12 | prod-13 |
+| P14 Scenarios screen rebuild (list/filter, header, Setup/Shipments/Runs subtabs) | FROZEN | 2026-09-13 | prod-14 |
