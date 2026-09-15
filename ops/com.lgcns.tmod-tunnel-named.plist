@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.lgcns.tmod-tunnel</string>
+  <key>WorkingDirectory</key><string>@PWD@</string>
+  <key>ProgramArguments</key><array><string>@BIN@</string><string>tunnel</string><string>--config</string><string>@CFDIR@/config.yml</string><string>--no-autoupdate</string><string>run</string><string>@NAME@</string></array>
+  <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>@PWD@/data/cloudflared.log</string>
+  <key>StandardErrorPath</key><string>@PWD@/data/cloudflared.log</string>
+</dict></plist>

@@ -8,7 +8,8 @@ uv sync --extra extract                                   # + oracledb (QA DB �
 scripts/valhalla_up.sh data/private/valhalla              # 실도로 (docker, 최초 5~15분)
 uv run --extra extract python scripts/extract_lmd.py      # QA DB LMD_SHIPMENT -> data/private/lmd_*  (또는 웹 UI Refresh)
 ops/start.sh                                              # http://<이 맥 IP>:8090/?token=...
-ops/tunnel.sh                                             # 외부 URL (Cloudflare quick tunnel)
+ops/tunnel.sh                                             # 외부 URL (Cloudflare quick tunnel, 재시작마다 주소 변경)
+ops/named_tunnel.sh tmod.도메인.com                        # 고정 URL (named tunnel, 사전에 `cloudflared tunnel login` 필요)
 ```
 CLI만: `uv run python -m tmod.lmd_poc data/private/lmd_lphb30260_demo data/scenarios/lmd_windows.json out.html --valhalla http://localhost:8002`
 
@@ -19,6 +20,7 @@ CLI만: `uv run python -m tmod.lmd_poc data/private/lmd_lphb30260_demo data/scen
 |---|---|
 | 이 맥 상시 기동 | `ops/install_launchd.sh` (web + Cloudflare 터널), `ops/com.lgcns.tmod-backup.plist` (매일 02:00 백업) |
 | 현재 URL/토큰 | `ops/url.sh` |
+| 고정 URL 전환 | 1) `cloudflared tunnel login` (브라우저, 본인 Cloudflare 계정+도메인) 2) `ops/named_tunnel.sh tmod.도메인.com`. 되돌리기: `ops/install_launchd.sh` |
 | 접근 제어 | `ops/.env`: `TMOD_WEB_TOKEN`(API·공유 링크), `TMOD_USERS="alice:pw,bob:pw"`(브라우저 로그인), `TMOD_LAN_OPEN=1`(사설 IP 무인증) |
 | 백업 / 복구 | `ops/backup.sh` → `data/backups/tmod-*.dump`, `data-*.tgz` (14일 보관) · `ops/restore.sh <dump>` |
 | 헬스 | `GET /api/health` → version, db, valhalla, osrm, disk_free_gb |
